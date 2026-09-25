@@ -18,7 +18,6 @@ export default function CategoryDistributionModal({ visible, onClose }: Category
   const radius = 45;
   const circumference = 2 * Math.PI * radius;
 
-  // Monta os arcos proporcionais sem sobreposição
   let cumulativeAngle = 0;
   const arcs = activeCategories.map(cat => {
     const fraction = totalSpentAll > 0 ? cat.spent / totalSpentAll : 0;
@@ -37,6 +36,9 @@ export default function CategoryDistributionModal({ visible, onClose }: Category
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
+        {/* Toque fora para fechar */}
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+
         <View style={styles.modalCard}>
           <View style={styles.headerRow}>
             <View>
@@ -49,13 +51,10 @@ export default function CategoryDistributionModal({ visible, onClose }: Category
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-            {/* Gráfico Donut Dinâmico */}
+            {/* Gráfico Donut */}
             <View style={styles.centerChartBox}>
               <Svg width="120" height="120" viewBox="0 0 120 120">
-                {/* Trilha de fundo */}
                 <Circle cx="60" cy="60" r={radius} stroke="#1b252c" strokeWidth="12" fill="transparent" />
-
-                {/* Arcos reais de cada categoria com gastos */}
                 {arcs.map(arc => (
                   <Circle
                     key={arc.id}
@@ -135,6 +134,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.8)',
     justifyContent: 'flex-end',
+  },
+  backdrop: {
+    flex: 1,
   },
   modalCard: {
     backgroundColor: Colors.surface,

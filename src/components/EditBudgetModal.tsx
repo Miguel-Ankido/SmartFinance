@@ -53,6 +53,9 @@ export default function EditBudgetModal({ category, onClose }: EditBudgetModalPr
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.overlay}>
+        {/* Toque fora do cartão para fechar */}
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+
         <View style={styles.modalCard}>
           <View style={styles.headerRow}>
             <View style={styles.headerTitleGroup}>
@@ -130,6 +133,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'flex-end',
+  },
+  backdrop: {
+    flex: 1,
   },
   modalCard: {
     backgroundColor: Colors.surface,

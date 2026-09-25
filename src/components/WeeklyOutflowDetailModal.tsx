@@ -19,6 +19,9 @@ export default function WeeklyOutflowDetailModal({ visible, onClose }: WeeklyOut
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
+        {/* Toque fora para fechar */}
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+
         <View style={styles.modalCard}>
           <View style={styles.headerRow}>
             <View>
@@ -131,6 +134,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.8)',
     justifyContent: 'flex-end',
+  },
+  backdrop: {
+    flex: 1,
   },
   modalCard: {
     backgroundColor: Colors.surface,

@@ -55,7 +55,15 @@ export default function TransactionDetailModal({ transaction, onClose }: Transac
     <>
       <Modal visible={!!currentTx && !isEditOpen} animationType="fade" transparent onRequestClose={onClose}>
         <View style={styles.overlay}>
-          <View style={styles.card}>
+          {/* Fundo clicável para fechar o modal centrado */}
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={onClose}
+          />
+
+          {/* Cartão centrado que absorve os toques internos */}
+          <View style={styles.card} onStartShouldSetResponder={() => true}>
             <View style={styles.topRow}>
               <Text style={styles.tagBank}>{currentTx.bankName.toUpperCase()}</Text>
               <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
