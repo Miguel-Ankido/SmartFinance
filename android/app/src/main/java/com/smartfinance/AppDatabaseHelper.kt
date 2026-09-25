@@ -8,11 +8,13 @@ import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
 
+data class BankDefinition(val id: String, val name: String, val packageName: String, val color: String)
+
 class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
     companion object {
         private const val DATABASE_NAME = "smartfinance.db"
-        private const val DATABASE_VERSION = 4
+        private const val DATABASE_VERSION = 5
 
         const val TABLE_TRANSACTIONS = "transactions"
         const val COL_ID = "id"
@@ -41,6 +43,23 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
 
         const val TABLE_SESSION = "session"
         const val COL_SESSION_USER_ID = "user_id"
+
+        const val TABLE_MONITORED_BANKS = "monitored_banks"
+        const val COL_MB_USER_ID = "user_id"
+        const val COL_MB_BANK_ID = "bank_id"
+        const val COL_MB_PACKAGE_NAME = "package_name"
+        const val COL_MB_IS_ENABLED = "is_enabled"
+
+        val DEFAULT_BANKS = listOf(
+            BankDefinition("nubank", "Nubank", "com.nu.production", "#820AD1"),
+            BankDefinition("picpay", "PicPay", "com.picpay", "#11C76F"),
+            BankDefinition("inter", "Banco Inter", "br.com.intermedium", "#FF7A00"),
+            BankDefinition("itau", "Itaú", "com.itau", "#EC7000"),
+            BankDefinition("bradesco", "Bradesco", "com.bradesco", "#CC092F"),
+            BankDefinition("santander", "Santander", "com.santander.app", "#EA1D2C"),
+            BankDefinition("c6", "C6 Bank", "com.c6bank.app", "#8b9da7"),
+            BankDefinition("shell", "Terminal ADB (Testes)", "com.android.shell", "#38BDF8")
+        )
     }
 
     override fun onCreate(db: SQLiteDatabase?) {
@@ -89,6 +108,17 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
             )
         """.trimIndent()
         db?.execSQL(createSessionTable)
+
+        val createMonitoredBanksTable = """
+            CREATE TABLE IF NOT EXISTS $TABLE_MONITORED_BANKS (
+                $COL_MB_USER_ID TEXT,
+                $COL_MB_BANK_ID TEXT,
+                $COL_MB_PACKAGE_NAME TEXT,
+                $COL_MB_IS_ENABLED INTEGER,
+                PRIMARY KEY ($COL_MB_USER_ID, $COL_MB_BANK_ID)
+            )
+        """.trimIndent()
+        db?.execSQL(createMonitoredBanksTable)
     }
 
     override fun onUpgrade(db: SQLiteDatabase?, oldVersion: Int, newVersion: Int) {
@@ -115,6 +145,17 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
                 """.trimIndent())
             } catch (_: Exception) {}
         }
+        if (oldVersion < 5) {
+            db?.execSQL("""
+                CREATE TABLE IF NOT EXISTS $TABLE_MONITORED_BANKS (
+                    $COL_MB_USER_ID TEXT,
+                    $COL_MB_BANK_ID TEXT,
+                    $COL_MB_PACKAGE_NAME TEXT,
+                    $COL_MB_IS_ENABLED INTEGER,
+                    PRIMARY KEY ($COL_MB_USER_ID, $COL_MB_BANK_ID)
+                )
+            """.trimIndent())
+        }
     }
 
     // --- SESSÃO ATIVA ---
@@ -129,7 +170,7 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         return userId
     }
 
-    // --- TRANSAÇÕES FILTRADAS POR USUÁRIO ---
+    // --- TRANSAÇÕES ---
     fun insertTransaction(
         id: String,
         userId: String?,
@@ -205,7 +246,7 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         }
     }
 
-    // --- METAS FILTRADAS POR USUÁRIO ---
+    // --- METAS ---
     fun saveBudget(userId: String?, categoryId: String, limitAmount: Double): Boolean {
         val db = writableDatabase
         val targetUserId = userId ?: getActiveUserId() ?: return false
@@ -236,6 +277,100 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         }
         cursor.close()
         return map
+    }
+
+    // --- BANCOS MONITORADOS ---
+    fun getMonitoredBanks(userId: String?): WritableArray {
+        val targetUserId = userId ?: getActiveUserId() ?: "guest"
+        val db = writableDatabase
+
+        // Inicializa configurações padrão se ainda não existirem para o usuário
+        val checkCursor = db.rawQuery(
+            "SELECT COUNT(*) FROM $TABLE_MONITORED_BANKS WHERE $COL_MB_USER_ID = ?",
+            arrayOf(targetUserId)
+        )
+        var count = 0
+        if (checkCursor.moveToFirst()) {
+            count = checkCursor.getInt(0)
+        }
+        checkCursor.close()
+
+        if (count == 0) {
+            DEFAULT_BANKS.forEach { bank ->
+                val cv = ContentValues().apply {
+                    put(COL_MB_USER_ID, targetUserId)
+                    put(COL_MB_BANK_ID, bank.id)
+                    put(COL_MB_PACKAGE_NAME, bank.packageName)
+                    put(COL_MB_IS_ENABLED, 1)
+                }
+                db.insertWithOnConflict(TABLE_MONITORED_BANKS, null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+        }
+
+        val array = Arguments.createArray()
+        val cursor = db.rawQuery(
+            "SELECT $COL_MB_BANK_ID, $COL_MB_IS_ENABLED FROM $TABLE_MONITORED_BANKS WHERE $COL_MB_USER_ID = ?",
+            arrayOf(targetUserId)
+        )
+        val settingsMap = mutableMapOf<String, Boolean>()
+        if (cursor.moveToFirst()) {
+            do {
+                val bId = cursor.getString(0)
+                val isEn = cursor.getInt(1) == 1
+                settingsMap[bId] = isEn
+            } while (cursor.moveToNext())
+        }
+        cursor.close()
+
+        DEFAULT_BANKS.forEach { bank ->
+            val isEnabled = settingsMap[bank.id] ?: true
+            val map = Arguments.createMap().apply {
+                putString("id", bank.id)
+                putString("name", bank.name)
+                putString("packageName", bank.packageName)
+                putBoolean("isEnabled", isEnabled)
+                putString("color", bank.color)
+            }
+            array.pushMap(map)
+        }
+        return array
+    }
+
+    fun setBankEnabled(userId: String?, bankId: String, isEnabled: Boolean): Boolean {
+        val targetUserId = userId ?: getActiveUserId() ?: "guest"
+        val db = writableDatabase
+        val bankDef = DEFAULT_BANKS.find { it.id == bankId }
+        val pkg = bankDef?.packageName ?: ""
+
+        val cv = ContentValues().apply {
+            put(COL_MB_USER_ID, targetUserId)
+            put(COL_MB_BANK_ID, bankId)
+            put(COL_MB_PACKAGE_NAME, pkg)
+            put(COL_MB_IS_ENABLED, if (isEnabled) 1 else 0)
+        }
+        val res = db.insertWithOnConflict(TABLE_MONITORED_BANKS, null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+        return res != -1L
+    }
+
+    fun isPackageMonitored(userId: String?, packageName: String): Boolean {
+        val targetUserId = userId ?: getActiveUserId() ?: "guest"
+        val db = readableDatabase
+        val cursor = db.rawQuery(
+            "SELECT $COL_MB_IS_ENABLED FROM $TABLE_MONITORED_BANKS WHERE $COL_MB_USER_ID = ? AND $COL_MB_PACKAGE_NAME = ?",
+            arrayOf(targetUserId, packageName)
+        )
+        var enabled = true
+        if (cursor.moveToFirst()) {
+            enabled = cursor.getInt(0) == 1
+        } else {
+            // Se o pacote pertencer à lista padrão mas não estiver no banco, inicia ativo
+            val existsInDefaults = DEFAULT_BANKS.any { it.packageName == packageName }
+            if (!existsInDefaults) {
+                enabled = false
+            }
+        }
+        cursor.close()
+        return enabled
     }
 
     // --- AUTENTICAÇÃO ---

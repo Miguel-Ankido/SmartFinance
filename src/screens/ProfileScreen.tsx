@@ -1,12 +1,63 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, NativeModules } from 'react-native';
 import { Colors } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import { useFinance } from '../context/FinanceContext';
+import { MonitoredBank } from '../types/finance';
+import ManageBanksModal from '../components/ManageBanksModal';
+
+const { NotificationModule } = NativeModules;
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const { hasPermission, requestPermission } = useFinance();
+  const [banks, setBanks] = useState<MonitoredBank[]>([]);
+  const [isManageBanksOpen, setIsManageBanksOpen] = useState(false);
+
+  const loadMonitoredBanks = useCallback(async () => {
+    try {
+      if (NotificationModule?.getMonitoredBanks) {
+        const list: MonitoredBank[] = await NotificationModule.getMonitoredBanks(user?.id);
+        if (list && Array.isArray(list)) {
+          setBanks(list);
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao ler bancos monitorados:', e);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    loadMonitoredBanks();
+  }, [loadMonitoredBanks]);
+
+  const handleToggleBank = async (bankId: string, enabled: boolean) => {
+    setBanks(prev => prev.map(b => (b.id === bankId ? { ...b, isEnabled: enabled } : b)));
+    try {
+      if (NotificationModule?.setBankEnabled) {
+        await NotificationModule.setBankEnabled(bankId, enabled, user?.id);
+      }
+    } catch (e) {
+      console.error('Erro ao atualizar banco:', e);
+    }
+  };
+
+  const handleToggleAll = async (enableAll: boolean) => {
+    setBanks(prev => prev.map(b => ({ ...b, isEnabled: enableAll })));
+    try {
+      if (NotificationModule?.setBankEnabled) {
+        for (const b of banks) {
+          await NotificationModule.setBankEnabled(b.id, enableAll, user?.id);
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao atualizar todos os bancos:', e);
+    }
+  };
+
+  const activeBanks = banks.filter(b => b.isEnabled);
+  const activeCount = activeBanks.length;
+  const activeNames = activeBanks.map(b => b.name).slice(0, 3).join(', ') + (activeCount > 3 ? '...' : '');
 
   const userInitial = user?.name ? user.name.charAt(0).toUpperCase() : 'U';
   const memberSince = user?.createdAt
@@ -58,7 +109,7 @@ export default function ProfileScreen() {
         <View style={styles.optionLeft}>
           <Text style={styles.optionTitle}>Captura em Segundo Plano</Text>
           <Text style={styles.optionSubtitle}>
-            {hasPermission ? 'Serviço ativo e interceptando alertas bancários' : 'Acesso a notificações desativado'}
+            {hasPermission ? 'Serviço ativo e interceptando alertas' : 'Acesso a notificações desativado'}
           </Text>
         </View>
         <TouchableOpacity
@@ -70,14 +121,22 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Bancos Monitorados */}
-      <View style={styles.optionCard}>
+      {/* Bancos Monitorados (Clicável) */}
+      <TouchableOpacity
+        style={styles.optionCard}
+        activeOpacity={0.7}
+        onPress={() => setIsManageBanksOpen(true)}>
         <View style={styles.optionLeft}>
-          <Text style={styles.optionTitle}>Bancos Ativos</Text>
-          <Text style={styles.optionSubtitle}>Nubank, PicPay, Inter, Itaú, Bradesco</Text>
+          <View style={styles.optionTitleRow}>
+            <Text style={styles.optionTitle}>Bancos Monitorados</Text>
+            <Text style={styles.badgeHint}>CONFIGURAR ✎</Text>
+          </View>
+          <Text style={styles.optionSubtitle}>
+            {activeCount === 0 ? 'Nenhum banco monitorado' : activeNames}
+          </Text>
         </View>
-        <Text style={styles.optionValueText}>5 bancos</Text>
-      </View>
+        <Text style={styles.optionValueText}>{activeCount} de {banks.length}</Text>
+      </TouchableOpacity>
 
       {/* Armazenamento Local */}
       <View style={styles.optionCard}>
@@ -92,6 +151,14 @@ export default function ProfileScreen() {
       <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.8} onPress={handleLogout}>
         <Text style={styles.logoutBtnText}>SAIR DA CONTA</Text>
       </TouchableOpacity>
+
+      <ManageBanksModal
+        visible={isManageBanksOpen}
+        banks={banks}
+        onToggleBank={handleToggleBank}
+        onToggleAll={handleToggleAll}
+        onClose={() => setIsManageBanksOpen(false)}
+      />
     </ScrollView>
   );
 }
@@ -146,7 +213,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   optionLeft: { flex: 1, marginRight: 10 },
+  optionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   optionTitle: { color: Colors.textPrimary, fontSize: 14, fontWeight: '600' },
+  badgeHint: { color: Colors.primary, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
   optionSubtitle: { color: Colors.textMuted, fontSize: 11, marginTop: 3 },
   statusPill: {
     paddingHorizontal: 12,

@@ -67,3 +67,11 @@ export interface MonthSpending {
   expense: number;
   balance: number;
 }
+
+export interface MonitoredBank {
+  id: string;
+  name: string;
+  packageName: string;
+  isEnabled: boolean;
+  color: string;
+}

@@ -61,7 +61,7 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
-   @ReactMethod
+    @ReactMethod
     fun saveManualTransaction(txMap: ReadableMap, promise: Promise) {
         try {
             val db = AppDatabaseHelper(reactContext)
@@ -120,6 +120,29 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
             promise.resolve(success)
         } catch (e: Exception) {
             promise.reject("BUDGET_WRITE_ERROR", e.message)
+        }
+    }
+
+    // --- MONITORED BANKS ---
+    @ReactMethod
+    fun getMonitoredBanks(userId: String?, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper(reactContext)
+            val banks = db.getMonitoredBanks(userId)
+            promise.resolve(banks)
+        } catch (e: Exception) {
+            promise.reject("BANKS_READ_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun setBankEnabled(bankId: String, isEnabled: Boolean, userId: String?, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper(reactContext)
+            val success = db.setBankEnabled(userId, bankId, isEnabled)
+            promise.resolve(success)
+        } catch (e: Exception) {
+            promise.reject("BANKS_WRITE_ERROR", e.message)
         }
     }
 

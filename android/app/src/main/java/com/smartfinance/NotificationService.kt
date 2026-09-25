@@ -15,9 +15,14 @@ class NotificationService : NotificationListenerService() {
     companion object {
         private const val TAG = "NotificationService"
         private val TARGET_PACKAGES = setOf(
-            "com.nu.production",  // Nubank
-            "com.picpay",         // PicPay
-            "com.android.shell"   // Testes e simulações via ADB
+            "com.nu.production",
+            "com.picpay",
+            "br.com.intermedium",
+            "com.itau",
+            "com.bradesco",
+            "com.santander.app",
+            "com.c6bank.app",
+            "com.android.shell"
         )
     }
 
@@ -32,6 +37,15 @@ class NotificationService : NotificationListenerService() {
             return
         }
 
+        // Verifica se o usuário permitiu o monitoramento deste pacote/banco
+        val db = AppDatabaseHelper(applicationContext)
+        val currentUserId = db.getActiveUserId()
+
+        if (!db.isPackageMonitored(currentUserId, packageName)) {
+            Log.d(TAG, "Notificação de $packageName ignorada: banco desativado pelo usuário.")
+            return
+        }
+
         val extras = sbn.notification?.extras ?: return
         val title = extras.getString(Notification.EXTRA_TITLE) ?: ""
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
@@ -41,7 +55,6 @@ class NotificationService : NotificationListenerService() {
 
         Log.d(TAG, "Notificação interceptada de $packageName: $title | $fullContent")
 
-        // 1. Extração e sanitização de dados no lado nativo
         var amount = 0.0
         val regexAmount = Regex("""R\$\s?([\d.,]+)""", RegexOption.IGNORE_CASE)
         val match = regexAmount.find(fullContent)
@@ -57,7 +70,7 @@ class NotificationService : NotificationListenerService() {
         val merchantMatch = Regex("""\b(?:em|no|na|para)\s+([A-Za-z0-9À-ÿ\s&'-]+?)(?:\s+(?:aprovada|confirmada|no valor|com sucesso|\d)|$|\.)""", RegexOption.IGNORE_CASE).find(fullContent)
         if (merchantMatch != null && merchantMatch.groupValues.size > 1) {
             merchantTitle = merchantMatch.groupValues[1].trim()
-        } else if (title.isNotBlank() && !Regex("""nubank|picpay|shell|banco""", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
+        } else if (title.isNotBlank() && !Regex("""nubank|picpay|shell|banco|inter|itaú|itau|bradesco|santander|c6""", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
             merchantTitle = title
         }
 
@@ -65,9 +78,11 @@ class NotificationService : NotificationListenerService() {
         val detectedBank = when {
             packageName.contains("nu.production") || rawLower.contains("nubank") -> "Nubank"
             packageName.contains("picpay") || rawLower.contains("picpay") -> "PicPay"
-            rawLower.contains("inter") -> "Inter"
-            rawLower.contains("itau") || rawLower.contains("itaú") -> "Itaú"
-            rawLower.contains("bradesco") -> "Bradesco"
+            packageName.contains("intermedium") || rawLower.contains("inter") -> "Banco Inter"
+            packageName.contains("itau") || rawLower.contains("itaú") -> "Itaú"
+            packageName.contains("bradesco") || rawLower.contains("bradesco") -> "Bradesco"
+            packageName.contains("santander") || rawLower.contains("santander") -> "Santander"
+            packageName.contains("c6bank") || rawLower.contains("c6") -> "C6 Bank"
             else -> "Outro Banco"
         }
 
@@ -87,11 +102,6 @@ class NotificationService : NotificationListenerService() {
         val dateFormatted = dateFormat.format(dateObj)
         val id = "${postTime}_${(1000..9999).random()}"
 
-        // Obter o usuário logado na sessão ativa
-        val db = AppDatabaseHelper(applicationContext)
-        val currentUserId = db.getActiveUserId()
-
-        // 2. Persistência imediata no SQLite nativo vinculado ao usuário logado
         try {
             db.insertTransaction(
                 id = id,
@@ -110,7 +120,6 @@ class NotificationService : NotificationListenerService() {
             Log.e(TAG, "Erro ao gravar no SQLite: ${e.message}")
         }
 
-        // 3. Emissão para a interface React Native (se o app estiver em execução)
         val params: WritableMap = Arguments.createMap().apply {
             putString("id", id)
             putString("userId", currentUserId ?: "")
