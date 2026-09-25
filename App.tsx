@@ -1,8 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
   StatusBar,
   View,
   Text,
+  Image,
   ActivityIndicator,
   StyleSheet,
   ScrollView,
@@ -23,6 +24,8 @@ import TransactionsScreen from './src/screens/TransactionsScreen';
 import BudgetScreen from './src/screens/BudgetScreen';
 import StatsScreen from './src/screens/StatsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+
+const LOGO_IMG = require('./src/assets/SyncPayBlack.jpg');
 
 const renderHomeIcon = ({ color }: { color: string }) => (
   <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
@@ -65,18 +68,20 @@ const TABS = [
 ];
 
 function SwipeableTabNavigator() {
-  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const { width: screenWidth } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<any>(null);
+
+  const pageStyle = useMemo(() => [styles.pageItem, { width: screenWidth }], [screenWidth]);
 
   const goToTab = (index: number) => {
     setActiveTab(index);
-    scrollRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
+    scrollRef.current?.scrollTo({ x: index * screenWidth, animated: true });
   };
 
   const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = e.nativeEvent.contentOffset.x;
-    const index = Math.round(offsetX / SCREEN_WIDTH);
+    const index = Math.round(offsetX / screenWidth);
     if (index >= 0 && index < TABS.length && index !== activeTab) {
       setActiveTab(index);
     }
@@ -93,7 +98,6 @@ function SwipeableTabNavigator() {
 
   return (
     <View style={styles.appContainer}>
-      {/* Container Deslizável por Gesto de Dedo */}
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -103,24 +107,24 @@ function SwipeableTabNavigator() {
         bounces={false}
         scrollEventThrottle={16}
         style={styles.pager}>
-        <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
+        <View style={pageStyle}>
           <HomeScreen navigation={navigation} />
         </View>
-        <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
+        <View style={pageStyle}>
           <TransactionsScreen />
         </View>
-        <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
+        <View style={pageStyle}>
           <BudgetScreen />
         </View>
-        <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
+        <View style={pageStyle}>
           <StatsScreen />
         </View>
-        <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
+        <View style={pageStyle}>
           <ProfileScreen />
         </View>
       </ScrollView>
 
-      {/* Barra de Abas Inferior */}
+      {/* Barra de Navegação Inferior */}
       <View style={styles.bottomBar}>
         {TABS.map((tab, idx) => {
           const isActive = activeTab === idx;
@@ -145,11 +149,28 @@ function SwipeableTabNavigator() {
 
 function RootNavigator() {
   const { user, isLoading } = useAuth();
+  const [showSplash, setShowSplash] = useState(true);
 
-  if (isLoading) {
+  useEffect(() => {
+    if (!isLoading) {
+      const timer = setTimeout(() => {
+        setShowSplash(false);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading]);
+
+  if (isLoading || showSplash) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={styles.splashContainer}>
+        <StatusBar barStyle="light-content" />
+        <Image
+          source={LOGO_IMG}
+          style={styles.splashLogo}
+          resizeMode="contain"
+          fadeDuration={0}
+        />
+        <ActivityIndicator size="small" color={Colors.primary} style={styles.splashSpinner} />
       </View>
     );
   }
@@ -175,11 +196,27 @@ export default function App(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
+  splashContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  splashLogo: {
+    width: 250,
+    height: 250,
+  },
+  splashSpinner: {
+    marginTop: 20,
+  },
   appContainer: {
     flex: 1,
     backgroundColor: Colors.background,
   },
   pager: {
+    flex: 1,
+  },
+  pageItem: {
     flex: 1,
   },
   bottomBar: {
@@ -206,11 +243,5 @@ const styles = StyleSheet.create({
   },
   tabLabelActive: {
     fontWeight: '800',
-  },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

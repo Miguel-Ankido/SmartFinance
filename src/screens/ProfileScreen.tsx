@@ -5,14 +5,16 @@ import { useAuth } from '../context/AuthContext';
 import { useFinance } from '../context/FinanceContext';
 import { MonitoredBank } from '../types/finance';
 import ManageBanksModal from '../components/ManageBanksModal';
+import ExportReportModal from '../components/ExportReportModal';
 
 const { NotificationModule } = NativeModules;
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
-  const { hasPermission, requestPermission } = useFinance();
+  const { hasPermission, requestPermission, transactions } = useFinance();
   const [banks, setBanks] = useState<MonitoredBank[]>([]);
   const [isManageBanksOpen, setIsManageBanksOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   const loadMonitoredBanks = useCallback(async () => {
     try {
@@ -101,6 +103,25 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* Seção de Relatórios e Exportação */}
+      <Text style={styles.sectionTitle}>RELATÓRIOS E DADOS</Text>
+
+      <TouchableOpacity
+        style={styles.optionCard}
+        activeOpacity={0.7}
+        onPress={() => setIsExportModalOpen(true)}>
+        <View style={styles.optionLeft}>
+          <View style={styles.optionTitleRow}>
+            <Text style={styles.optionTitle}>Exportar Extrato (CSV)</Text>
+            <Text style={styles.badgeHint}>EXCEL / PLANILHAS ↗</Text>
+          </View>
+          <Text style={styles.optionSubtitle}>
+            Baixe o extrato consolidado com categorias, datas e valores
+          </Text>
+        </View>
+        <Text style={styles.exportBadge}>EXPORTAR</Text>
+      </TouchableOpacity>
+
       {/* Seção de Preferências e Segurança */}
       <Text style={styles.sectionTitle}>SISTEMA E INTEGRAÇÕES</Text>
 
@@ -121,7 +142,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Bancos Monitorados (Clicável) */}
+      {/* Bancos Monitorados */}
       <TouchableOpacity
         style={styles.optionCard}
         activeOpacity={0.7}
@@ -158,6 +179,13 @@ export default function ProfileScreen() {
         onToggleBank={handleToggleBank}
         onToggleAll={handleToggleAll}
         onClose={() => setIsManageBanksOpen(false)}
+      />
+
+      <ExportReportModal
+        visible={isExportModalOpen}
+        transactions={transactions}
+        userName={user?.name}
+        onClose={() => setIsExportModalOpen(false)}
       />
     </ScrollView>
   );
@@ -200,7 +228,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   memberBadgeText: { color: Colors.textMuted, fontSize: 11, fontWeight: '600' },
-  sectionTitle: { color: Colors.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.8, marginBottom: 12 },
+  sectionTitle: { color: Colors.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.8, marginBottom: 12, marginTop: 8 },
   optionCard: {
     backgroundColor: Colors.surfaceCard,
     padding: 16,
@@ -229,6 +257,16 @@ const styles = StyleSheet.create({
   pillTextActive: { color: Colors.primary },
   optionValueText: { color: Colors.primary, fontSize: 12, fontWeight: '700' },
   optionSecureText: { color: Colors.income, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  exportBadge: {
+    color: '#000000',
+    backgroundColor: Colors.primary,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
   logoutBtn: {
     backgroundColor: 'rgba(248, 113, 113, 0.12)',
     paddingVertical: 14,

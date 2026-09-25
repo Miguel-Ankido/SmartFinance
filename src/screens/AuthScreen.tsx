@@ -11,9 +11,12 @@ import {
   ActivityIndicator,
   Keyboard,
   TouchableWithoutFeedback,
+  Image,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
+
+const LOGO_IMG = require('../assets/SyncPayBlack.jpg');
 
 export default function AuthScreen() {
   const { login, register } = useAuth();
@@ -28,7 +31,6 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
-  // Monitora o estado do teclado para recolher o cabeçalho e dar espaço aos campos
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -95,21 +97,15 @@ export default function AuthScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
           
-          {/* Cabeçalho da Marca (compacta quando o teclado abre) */}
+          {/* Cabeçalho da Marca SyncPay */}
           {!isKeyboardVisible ? (
             <View style={styles.brandContainer}>
-              <View style={styles.logoBadge}>
-                <Text style={styles.logoBadgeText}>SF</Text>
-              </View>
-              <Text style={styles.appName}>SmartFinance</Text>
+              <Image source={LOGO_IMG} style={styles.brandLogo} resizeMode="contain" />
               <Text style={styles.appTagline}>A SUA VIDA FINANCEIRA INTELIGENTE</Text>
             </View>
           ) : (
             <View style={styles.brandContainerCompact}>
-              <View style={styles.logoBadgeCompact}>
-                <Text style={styles.logoBadgeTextCompact}>SF</Text>
-              </View>
-              <Text style={styles.appNameCompact}>SmartFinance</Text>
+              <Image source={LOGO_IMG} style={styles.brandLogoCompact} resizeMode="contain" />
             </View>
           )}
 
@@ -212,7 +208,7 @@ export default function AuthScreen() {
                 <ActivityIndicator color="#000000" />
               ) : (
                 <Text style={styles.actionButtonText}>
-                  {mode === 'LOGIN' ? 'ACESSAR CONTA' : 'CRIAR CONTA SMARTFINANCE'}
+                  {mode === 'LOGIN' ? 'ACESSAR CONTA' : 'CRIAR CONTA SYNCPAY'}
                 </Text>
               )}
             </TouchableOpacity>
@@ -232,65 +228,33 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 22,
     paddingTop: 24,
-    paddingBottom: 140, // Espaço extra para permitir rolar bem acima do teclado
+    paddingBottom: 140,
   },
   brandContainer: {
     alignItems: 'center',
-    marginBottom: 20,
-    marginTop: 10,
+    marginBottom: 16,
+    marginTop: 4,
   },
-  logoBadge: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  logoBadgeText: {
-    color: '#000000',
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  appName: {
-    color: Colors.textPrimary,
-    fontSize: 24,
-    fontWeight: '800',
+  brandLogo: {
+    width: 140,
+    height: 140,
   },
   appTagline: {
     color: Colors.textSecondary,
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 1.5,
-    marginTop: 3,
-  },
-  brandContainerCompact: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    marginBottom: 12,
     marginTop: 4,
   },
-  logoBadgeCompact: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
+  brandContainerCompact: {
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+    marginTop: 2,
   },
-  logoBadgeTextCompact: {
-    color: '#000000',
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  appNameCompact: {
-    color: Colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '800',
+  brandLogoCompact: {
+    width: 60,
+    height: 60,
   },
   modeSwitcher: {
     flexDirection: 'row',

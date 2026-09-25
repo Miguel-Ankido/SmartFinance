@@ -1,10 +1,16 @@
 package com.smartfinance
 
+import android.content.ContentValues
 import android.content.Intent
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -143,6 +149,43 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
             promise.resolve(success)
         } catch (e: Exception) {
             promise.reject("BANKS_WRITE_ERROR", e.message)
+        }
+    }
+
+    // --- CSV EXPORT TO DOWNLOADS ---
+    @ReactMethod
+    fun saveCsvToDownloads(fileName: String, csvContent: String, promise: Promise) {
+        try {
+            val resolver = reactContext.contentResolver
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/SmartFinance")
+                }
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { os ->
+                        os.write(csvContent.toByteArray(Charsets.UTF_8))
+                    }
+                    promise.resolve("Downloads/SmartFinance/$fileName")
+                } else {
+                    promise.reject("SAVE_FAILED", "Não foi possível criar o arquivo em Downloads.")
+                }
+            } else {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val targetDir = File(downloadsDir, "SmartFinance")
+                if (!targetDir.exists()) {
+                    targetDir.mkdirs()
+                }
+                val file = File(targetDir, fileName)
+                FileOutputStream(file).use { fos ->
+                    fos.write(csvContent.toByteArray(Charsets.UTF_8))
+                }
+                promise.resolve("Downloads/SmartFinance/$fileName")
+            }
+        } catch (e: Exception) {
+            promise.reject("EXPORT_ERROR", e.message)
         }
     }
 
