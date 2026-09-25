@@ -73,3 +73,21 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Dependências e caches
+node_modules/
+.npm/
+.yarn/
+
+# Android
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/*.keystore
+android/app/*.jks
+*.hprof
+
+# Metro e temporários
+.metro-health-check*
+*.log
