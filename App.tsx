@@ -1,7 +1,16 @@
-import React from 'react';
-import { StatusBar, View, ActivityIndicator, StyleSheet } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import React, { useRef, useState } from 'react';
+import {
+  StatusBar,
+  View,
+  Text,
+  ActivityIndicator,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  useWindowDimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+} from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
@@ -14,8 +23,6 @@ import TransactionsScreen from './src/screens/TransactionsScreen';
 import BudgetScreen from './src/screens/BudgetScreen';
 import StatsScreen from './src/screens/StatsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-
-const Tab = createBottomTabNavigator();
 
 const renderHomeIcon = ({ color }: { color: string }) => (
   <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
@@ -49,32 +56,92 @@ const renderPerfilIcon = ({ color }: { color: string }) => (
   </Svg>
 );
 
-const tabScreenOptions = {
-  headerShown: false,
-  tabBarStyle: {
-    backgroundColor: Colors.surface,
-    borderTopColor: Colors.border,
-    height: 64,
-    paddingBottom: 8,
-    paddingTop: 8,
-  },
-  tabBarActiveTintColor: Colors.primary,
-  tabBarInactiveTintColor: Colors.textMuted,
-  tabBarLabelStyle: {
-    fontSize: 10,
-    fontWeight: '700' as const,
-    letterSpacing: 0.5,
-  },
-};
+const TABS = [
+  { key: 'Home', label: 'Home', renderIcon: renderHomeIcon },
+  { key: 'Extrato', label: 'Extrato', renderIcon: renderExtratoIcon },
+  { key: 'Limites', label: 'Limites', renderIcon: renderLimitesIcon },
+  { key: 'Gráficos', label: 'Gráficos', renderIcon: renderGraficosIcon },
+  { key: 'Perfil', label: 'Perfil', renderIcon: renderPerfilIcon },
+];
 
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});
+function SwipeableTabNavigator() {
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const [activeTab, setActiveTab] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+
+  const goToTab = (index: number) => {
+    setActiveTab(index);
+    scrollRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
+  };
+
+  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / SCREEN_WIDTH);
+    if (index >= 0 && index < TABS.length && index !== activeTab) {
+      setActiveTab(index);
+    }
+  };
+
+  const navigation = {
+    navigate: (screenName: string) => {
+      const idx = TABS.findIndex(t => t.key.toLowerCase() === screenName.toLowerCase());
+      if (idx !== -1) {
+        goToTab(idx);
+      }
+    },
+  };
+
+  return (
+    <View style={styles.appContainer}>
+      {/* Container Deslizável por Gesto de Dedo */}
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={handleScrollEnd}
+        bounces={false}
+        scrollEventThrottle={16}
+        style={styles.pager}>
+        <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
+          <HomeScreen navigation={navigation} />
+        </View>
+        <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
+          <TransactionsScreen />
+        </View>
+        <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
+          <BudgetScreen />
+        </View>
+        <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
+          <StatsScreen />
+        </View>
+        <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
+          <ProfileScreen />
+        </View>
+      </ScrollView>
+
+      {/* Barra de Abas Inferior */}
+      <View style={styles.bottomBar}>
+        {TABS.map((tab, idx) => {
+          const isActive = activeTab === idx;
+          const tintColor = isActive ? Colors.primary : Colors.textMuted;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={styles.tabButton}
+              activeOpacity={0.7}
+              onPress={() => goToTab(idx)}>
+              {tab.renderIcon({ color: tintColor })}
+              <Text style={[styles.tabLabel, { color: tintColor }, isActive && styles.tabLabelActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
 
 function RootNavigator() {
   const { user, isLoading } = useAuth();
@@ -93,15 +160,7 @@ function RootNavigator() {
 
   return (
     <FinanceProvider>
-      <NavigationContainer>
-        <Tab.Navigator screenOptions={tabScreenOptions}>
-          <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarIcon: renderHomeIcon }} />
-          <Tab.Screen name="Extrato" component={TransactionsScreen} options={{ tabBarIcon: renderExtratoIcon }} />
-          <Tab.Screen name="Limites" component={BudgetScreen} options={{ tabBarIcon: renderLimitesIcon }} />
-          <Tab.Screen name="Gráficos" component={StatsScreen} options={{ tabBarIcon: renderGraficosIcon }} />
-          <Tab.Screen name="Perfil" component={ProfileScreen} options={{ tabBarIcon: renderPerfilIcon }} />
-        </Tab.Navigator>
-      </NavigationContainer>
+      <SwipeableTabNavigator />
     </FinanceProvider>
   );
 }
@@ -114,3 +173,44 @@ export default function App(): React.JSX.Element {
     </AuthProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  appContainer: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  pager: {
+    flex: 1,
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    backgroundColor: Colors.surface,
+    borderTopColor: Colors.border,
+    borderTopWidth: 1,
+    height: 64,
+    paddingBottom: 8,
+    paddingTop: 8,
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  tabButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  tabLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginTop: 4,
+  },
+  tabLabelActive: {
+    fontWeight: '800',
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

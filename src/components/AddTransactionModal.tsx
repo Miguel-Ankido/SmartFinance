@@ -28,33 +28,41 @@ const CATEGORY_OPTIONS: { id: CategoryId; label: string; color: string }[] = [
   { id: 'bills', label: 'Contas Fixas', color: Colors.catBills },
   { id: 'shopping', label: 'Compras', color: Colors.catShopping },
   { id: 'salary', label: 'Salário', color: Colors.catIncome },
+  { id: 'others', label: 'Outros', color: Colors.textSecondary },
 ];
 
 export default function AddTransactionModal({ visible, onClose }: AddTransactionModalProps) {
   const { addManualTransaction } = useFinance();
 
   const [type, setType] = useState<TransactionType>('EXPENSE');
-  const [amountRaw, setAmountRaw] = useState('');
   const [title, setTitle] = useState('');
+  const [amountRaw, setAmountRaw] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>('food');
   const [selectedBank, setSelectedBank] = useState<string>('Nubank');
   const [note, setNote] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleSave = () => {
-    const numericAmount = parseFloat(amountRaw.replace(',', '.')) || 0;
-    if (numericAmount <= 0) return;
+    setErrorMsg('');
+    const parsedAmount = parseFloat(amountRaw.replace(',', '.')) || 0;
+
+    if (parsedAmount <= 0) {
+      setErrorMsg('Informe um valor maior que zero.');
+      return;
+    }
 
     addManualTransaction({
       title: title.trim(),
-      amount: numericAmount,
+      amount: parsedAmount,
       type,
       category: selectedCategory,
       bankName: selectedBank,
       note: note.trim() || undefined,
     });
 
-    setAmountRaw('');
+    // Limpa os campos e fecha
     setTitle('');
+    setAmountRaw('');
     setNote('');
     onClose();
   };
@@ -66,34 +74,44 @@ export default function AddTransactionModal({ visible, onClose }: AddTransaction
         style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View style={styles.topBar}>
-            <Text style={styles.headerLabel}>NOVO REGISTO</Text>
+            <Text style={styles.headerLabel}>NOVO LANÇAMENTO</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeCircle}>
               <Text style={styles.closeText}>✕</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.mainTitle}>Nova Transação</Text>
+          <Text style={styles.mainTitle}>Registrar Transação</Text>
 
+          {/* Seletor Tipo: Despesa vs Receita */}
           <View style={styles.typeSwitcher}>
             <TouchableOpacity
-              style={[styles.typeButton, type === 'EXPENSE' && styles.typeButtonExpenseActive]}
+              style={[styles.typeBtn, type === 'EXPENSE' && styles.typeBtnExpenseActive]}
               onPress={() => setType('EXPENSE')}>
-              <Text style={[styles.typeButtonText, type === 'EXPENSE' && styles.typeButtonTextActive]}>
-                DESPESA
+              <Text style={[styles.typeBtnText, type === 'EXPENSE' && styles.typeBtnTextExpense]}>
+                ↓ DESPESA
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.typeButton, type === 'INCOME' && styles.typeButtonIncomeActive]}
+              style={[styles.typeBtn, type === 'INCOME' && styles.typeBtnIncomeActive]}
               onPress={() => setType('INCOME')}>
-              <Text style={[styles.typeButtonText, type === 'INCOME' && styles.typeButtonTextActive]}>
-                RECEITA
+              <Text style={[styles.typeBtnText, type === 'INCOME' && styles.typeBtnTextIncome]}>
+                ↑ RECEITA
               </Text>
             </TouchableOpacity>
           </View>
 
+          {errorMsg ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>⚠ {errorMsg}</Text>
+            </View>
+          ) : null}
+
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
-            <Text style={styles.fieldLabel}>VALOR DA TRANSAÇÃO</Text>
+            {/* Valor */}
+            <Text style={styles.fieldLabel}>VALOR</Text>
             <View style={styles.amountInputRow}>
-              <Text style={styles.currencyPrefix}>R$</Text>
+              <Text style={[styles.currencyPrefix, type === 'INCOME' && styles.currencyPrefixIncome]}>
+                R$
+              </Text>
               <TextInput
                 style={styles.amountInput}
                 placeholder="0,00"
@@ -104,16 +122,18 @@ export default function AddTransactionModal({ visible, onClose }: AddTransaction
               />
             </View>
 
-            <Text style={styles.fieldLabel}>ESTABELECIMENTO / DESCRIÇÃO</Text>
+            {/* Descrição */}
+            <Text style={styles.fieldLabel}>DESCRIÇÃO / ESTABELECIMENTO</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="Ex: Supermercado, Restaurante..."
+              placeholder={type === 'EXPENSE' ? 'Ex: Padaria, Supermercado...' : 'Ex: Salário, Pix...'}
               placeholderTextColor={Colors.textMuted}
               value={title}
               onChangeText={setTitle}
             />
 
-            <Text style={styles.fieldLabel}>INSTITUIÇÃO BANCÁRIA</Text>
+            {/* Instituição / Banco */}
+            <Text style={styles.fieldLabel}>BANCO OU MÉTODO</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalChips}>
               {AVAILABLE_BANKS.map(bank => (
                 <TouchableOpacity
@@ -127,7 +147,8 @@ export default function AddTransactionModal({ visible, onClose }: AddTransaction
               ))}
             </ScrollView>
 
-            <Text style={styles.fieldLabel}>SELECIONE A CATEGORIA</Text>
+            {/* Categoria */}
+            <Text style={styles.fieldLabel}>CATEGORIA</Text>
             <View style={styles.categoriesGrid}>
               {CATEGORY_OPTIONS.map(cat => {
                 const isSelected = selectedCategory === cat.id;
@@ -149,19 +170,20 @@ export default function AddTransactionModal({ visible, onClose }: AddTransaction
               })}
             </View>
 
+            {/* Observação Opcional */}
             <Text style={styles.fieldLabel}>OBSERVAÇÃO (OPCIONAL)</Text>
             <TextInput
               style={[styles.textInput, styles.textArea]}
-              placeholder="Adicione uma nota sobre esta transação..."
+              placeholder="Adicione um detalhe sobre este gasto..."
               placeholderTextColor={Colors.textMuted}
               multiline
-              numberOfLines={3}
+              numberOfLines={2}
               value={note}
               onChangeText={setNote}
             />
 
             <TouchableOpacity style={styles.saveButton} activeOpacity={0.85} onPress={handleSave}>
-              <Text style={styles.saveButtonText}>SALVAR TRANSAÇÃO</Text>
+              <Text style={styles.saveButtonText}>CONFIRMAR LANÇAMENTO</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -197,21 +219,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   closeText: { color: Colors.textSecondary, fontSize: 14 },
-  mainTitle: { color: Colors.textPrimary, fontSize: 22, fontWeight: '800', marginTop: 4, marginBottom: 14 },
+  mainTitle: { color: Colors.textPrimary, fontSize: 22, fontWeight: '800', marginTop: 4, marginBottom: 12 },
   typeSwitcher: {
     flexDirection: 'row',
     backgroundColor: Colors.surfaceCard,
     borderRadius: 12,
     padding: 4,
-    marginBottom: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  typeButton: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
-  typeButtonExpenseActive: { backgroundColor: Colors.expense },
-  typeButtonIncomeActive: { backgroundColor: Colors.primary },
-  typeButtonText: { color: Colors.textMuted, fontSize: 12, fontWeight: '700' },
-  typeButtonTextActive: { color: '#000000' },
+  typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
+  typeBtnExpenseActive: { backgroundColor: 'rgba(248, 113, 113, 0.2)' },
+  typeBtnIncomeActive: { backgroundColor: 'rgba(198, 241, 53, 0.2)' },
+  typeBtnText: { color: Colors.textMuted, fontSize: 11, fontWeight: '700' },
+  typeBtnTextExpense: { color: Colors.expense, fontWeight: '800' },
+  typeBtnTextIncome: { color: Colors.primary, fontWeight: '800' },
+  errorBanner: {
+    backgroundColor: 'rgba(248, 113, 113, 0.12)',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  errorText: { color: Colors.expense, fontSize: 12, fontWeight: '600' },
   scrollBody: { paddingBottom: 30 },
-  fieldLabel: { color: Colors.textSecondary, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginTop: 12, marginBottom: 8 },
+  fieldLabel: { color: Colors.textSecondary, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginTop: 10, marginBottom: 6 },
   amountInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -221,7 +253,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  currencyPrefix: { color: Colors.primary, fontSize: 22, fontWeight: '800', marginRight: 8 },
+  currencyPrefix: { color: Colors.expense, fontSize: 22, fontWeight: '800', marginRight: 8 },
+  currencyPrefixIncome: { color: Colors.primary },
   amountInput: { flex: 1, height: 50, color: Colors.textPrimary, fontSize: 22, fontWeight: '800' },
   textInput: {
     backgroundColor: Colors.surfaceCard,
@@ -233,8 +266,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     fontSize: 13,
   },
-  textArea: { height: 70, textAlignVertical: 'top', paddingTop: 10 },
-  horizontalChips: { flexDirection: 'row', marginBottom: 6 },
+  textArea: { height: 60, textAlignVertical: 'top', paddingTop: 8 },
+  horizontalChips: { flexDirection: 'row', marginBottom: 4 },
   bankChip: {
     backgroundColor: Colors.surfaceCard,
     paddingHorizontal: 14,
@@ -257,9 +290,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     alignItems: 'center',
   },
-  categoryCardSelected: {
-    backgroundColor: '#16232b',
-  },
+  categoryCardSelected: { backgroundColor: '#16232b' },
   categoryIndicator: { width: 10, height: 10, borderRadius: 5, marginBottom: 6 },
   categoryCardLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '500', textAlign: 'center' },
   categoryCardLabelSelected: { color: Colors.textPrimary, fontWeight: '700' },
@@ -268,7 +299,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 18,
   },
   saveButtonText: { color: '#000000', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
 });
