@@ -1,7 +1,9 @@
-import React from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Colors } from '../theme/colors';
 import { Transaction } from '../types/finance';
+import { useFinance } from '../context/FinanceContext';
+import EditTransactionModal from './EditTransactionModal';
 
 interface TransactionDetailModalProps {
   transaction: Transaction | null;
@@ -9,9 +11,17 @@ interface TransactionDetailModalProps {
 }
 
 export default function TransactionDetailModal({ transaction, onClose }: TransactionDetailModalProps) {
-  if (!transaction) return null;
+  const { deleteTransaction } = useFinance();
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [currentTx, setCurrentTx] = useState<Transaction | null>(transaction);
 
-  const isIncome = transaction.type === 'INCOME';
+  React.useEffect(() => {
+    setCurrentTx(transaction);
+  }, [transaction]);
+
+  if (!currentTx) return null;
+
+  const isIncome = currentTx.type === 'INCOME';
 
   const categoryNames: Record<string, string> = {
     food: 'Alimentação',
@@ -23,64 +33,110 @@ export default function TransactionDetailModal({ transaction, onClose }: Transac
     others: 'Diversos',
   };
 
+  const handleDelete = () => {
+    Alert.alert(
+      'Excluir Transação',
+      `Tem certeza que deseja apagar o registro de "${currentTx.title}"? Esta ação removerá o registro do histórico e atualizará seu saldo.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteTransaction(currentTx.id);
+            onClose();
+          },
+        },
+      ]
+    );
+  };
+
   return (
-    <Modal visible={!!transaction} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.card}>
-          <View style={styles.topRow}>
-            <Text style={styles.tagBank}>{transaction.bankName.toUpperCase()}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>✕</Text>
+    <>
+      <Modal visible={!!currentTx && !isEditOpen} animationType="fade" transparent onRequestClose={onClose}>
+        <View style={styles.overlay}>
+          <View style={styles.card}>
+            <View style={styles.topRow}>
+              <Text style={styles.tagBank}>{currentTx.bankName.toUpperCase()}</Text>
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.title}>{currentTx.title}</Text>
+            <Text style={[styles.amount, isIncome ? styles.amountIncome : styles.amountExpense]}>
+              {isIncome ? '+ ' : '- '}
+              {currentTx.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </Text>
+
+            <View style={styles.divider} />
+
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Categoria</Text>
+              <Text style={styles.value}>{categoryNames[currentTx.category] || 'Diversos'}</Text>
+            </View>
+
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Horário</Text>
+              <Text style={styles.value}>{currentTx.timeFormatted}</Text>
+            </View>
+
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Data</Text>
+              <Text style={styles.value}>
+                {new Date(currentTx.timestamp).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+              </Text>
+            </View>
+
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Instituição</Text>
+              <Text style={[styles.value, { color: Colors.primary }]}>{currentTx.bankName}</Text>
+            </View>
+
+            {currentTx.note ? (
+              <View style={styles.noteBox}>
+                <Text style={styles.noteLabel}>Texto Original / Observação:</Text>
+                <Text style={styles.noteContent}>{currentTx.note}</Text>
+              </View>
+            ) : null}
+
+            {/* Ações: Editar e Excluir */}
+            <View style={styles.actionsRow}>
+              <TouchableOpacity
+                style={styles.editBtn}
+                activeOpacity={0.7}
+                onPress={() => setIsEditOpen(true)}>
+                <Text style={styles.editBtnText}>EDITAR ✎</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.deleteBtn}
+                activeOpacity={0.7}
+                onPress={handleDelete}>
+                <Text style={styles.deleteBtnText}>EXCLUIR 🗑</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.dismissButton} onPress={onClose}>
+              <Text style={styles.dismissText}>FECHAR</Text>
             </TouchableOpacity>
           </View>
-
-          <Text style={styles.title}>{transaction.title}</Text>
-          <Text style={[styles.amount, isIncome ? styles.amountIncome : styles.amountExpense]}>
-            {isIncome ? '+ ' : '- '}
-            {transaction.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-          </Text>
-
-          <View style={styles.divider} />
-
-          <View style={styles.infoRow}>
-            <Text style={styles.label}>Categoria</Text>
-            <Text style={styles.value}>{categoryNames[transaction.category] || 'Diversos'}</Text>
-          </View>
-
-          <View style={styles.infoRow}>
-            <Text style={styles.label}>Horário</Text>
-            <Text style={styles.value}>{transaction.timeFormatted}</Text>
-          </View>
-
-          <View style={styles.infoRow}>
-            <Text style={styles.label}>Data</Text>
-            <Text style={styles.value}>
-              {new Date(transaction.timestamp).toLocaleDateString('pt-BR', {
-                day: '2-digit',
-                month: 'long',
-                year: 'numeric',
-              })}
-            </Text>
-          </View>
-
-          <View style={styles.infoRow}>
-            <Text style={styles.label}>Instituição</Text>
-            <Text style={[styles.value, { color: Colors.primary }]}>{transaction.bankName}</Text>
-          </View>
-
-          {transaction.note ? (
-            <View style={styles.noteBox}>
-              <Text style={styles.noteLabel}>Texto Original / Observação:</Text>
-              <Text style={styles.noteContent}>{transaction.note}</Text>
-            </View>
-          ) : null}
-
-          <TouchableOpacity style={styles.dismissButton} onPress={onClose}>
-            <Text style={styles.dismissText}>FECHAR</Text>
-          </TouchableOpacity>
         </View>
-      </View>
-    </Modal>
+      </Modal>
+
+      <EditTransactionModal
+        visible={isEditOpen}
+        transaction={currentTx}
+        onClose={() => setIsEditOpen(false)}
+        onSaved={updated => {
+          setCurrentTx(updated);
+        }}
+      />
+    </>
   );
 }
 
@@ -136,8 +192,33 @@ const styles = StyleSheet.create({
   },
   noteLabel: { color: Colors.textMuted, fontSize: 10, fontWeight: '700', marginBottom: 4 },
   noteContent: { color: Colors.textSecondary, fontSize: 12, lineHeight: 17 },
-  dismissButton: {
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 10,
     marginTop: 18,
+  },
+  editBtn: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  editBtnText: { color: Colors.primary, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+  deleteBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(248, 113, 113, 0.12)',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(248, 113, 113, 0.3)',
+  },
+  deleteBtnText: { color: Colors.expense, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+  dismissButton: {
+    marginTop: 10,
     backgroundColor: Colors.surfaceHover,
     paddingVertical: 12,
     borderRadius: 10,

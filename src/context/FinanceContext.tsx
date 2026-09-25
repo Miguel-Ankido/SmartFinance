@@ -42,6 +42,9 @@ interface FinanceContextData {
     percentage: number;
   };
   addManualTransaction: (data: NewTransactionInput) => void;
+  updateCategoryBudget: (categoryId: CategoryId, newLimit: number) => void;
+  deleteTransaction: (id: string) => Promise<void>;
+  updateTransaction: (updatedTx: Transaction) => Promise<void>;
 }
 
 const initialCategories: CategoryData[] = [
@@ -61,10 +64,29 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<CategoryData[]>(initialCategories);
 
+  const recalculateCategoryExpenses = (txList: Transaction[], currentCategories: CategoryData[]) => {
+    return currentCategories.map(cat => {
+      const totalSpentInCat = txList
+        .filter(t => t.category === cat.id && t.type === 'EXPENSE')
+        .reduce((acc, curr) => acc + curr.amount, 0);
+      return { ...cat, spent: totalSpentInCat };
+    });
+  };
+
   const loadStoredData = useCallback(async () => {
     try {
       if (NotificationModule?.getStoredTransactions) {
         const stored: Transaction[] = await NotificationModule.getStoredTransactions();
+        let storedBudgets: Record<string, number> = {};
+
+        if (NotificationModule?.getStoredBudgets) {
+          try {
+            storedBudgets = await NotificationModule.getStoredBudgets();
+          } catch (err) {
+            console.log('Sem budgets salvos ainda');
+          }
+        }
+
         if (stored && Array.isArray(stored)) {
           setTransactions(stored);
 
@@ -73,7 +95,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
               const totalSpentInCat = stored
                 .filter(t => t.category === cat.id && t.type === 'EXPENSE')
                 .reduce((acc, curr) => acc + curr.amount, 0);
-              return { ...cat, spent: totalSpentInCat };
+
+              const definedLimit =
+                storedBudgets && storedBudgets[cat.id] !== undefined
+                  ? storedBudgets[cat.id]
+                  : cat.budgetLimit;
+
+              return { ...cat, spent: totalSpentInCat, budgetLimit: definedLimit };
             })
           );
         }
@@ -128,13 +156,55 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     NotificationModule?.saveManualTransaction?.(newTx);
-    setTransactions(prev => [newTx, ...prev]);
+    setTransactions(prev => {
+      const updated = [newTx, ...prev];
+      setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
+      return updated;
+    });
+  }, []);
 
-    if (data.type === 'EXPENSE') {
-      setCategories(prev =>
-        prev.map(cat => (cat.id === data.category ? { ...cat, spent: cat.spent + data.amount } : cat))
-      );
+  const updateCategoryBudget = useCallback((categoryId: CategoryId, newLimit: number) => {
+    try {
+      NotificationModule?.saveCategoryBudget?.(categoryId, newLimit);
+    } catch (err) {
+      console.error('Erro salvando meta nativa:', err);
     }
+
+    setCategories(prev =>
+      prev.map(cat => (cat.id === categoryId ? { ...cat, budgetLimit: newLimit } : cat))
+    );
+  }, []);
+
+  const deleteTransaction = useCallback(async (id: string) => {
+    try {
+      if (NotificationModule?.deleteTransaction) {
+        await NotificationModule.deleteTransaction(id);
+      }
+    } catch (e) {
+      console.error('Erro ao deletar transação no SQLite nativo:', e);
+    }
+
+    setTransactions(prev => {
+      const updated = prev.filter(t => t.id !== id);
+      setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
+      return updated;
+    });
+  }, []);
+
+  const updateTransaction = useCallback(async (updatedTx: Transaction) => {
+    try {
+      if (NotificationModule?.saveManualTransaction) {
+        await NotificationModule.saveManualTransaction(updatedTx);
+      }
+    } catch (e) {
+      console.error('Erro ao atualizar transação no SQLite nativo:', e);
+    }
+
+    setTransactions(prev => {
+      const updated = prev.map(t => (t.id === updatedTx.id ? updatedTx : t));
+      setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
+      return updated;
+    });
   }, []);
 
   useEffect(() => {
@@ -153,13 +223,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         dateGroup: 'TODAY',
       };
 
-      setTransactions(prev => [newTx, ...prev]);
-
-      if (event.type === 'EXPENSE') {
-        setCategories(prev =>
-          prev.map(cat => (cat.id === event.category ? { ...cat, spent: cat.spent + event.amount } : cat))
-        );
-      }
+      setTransactions(prev => {
+        const updated = [newTx, ...prev];
+        setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
+        return updated;
+      });
     });
 
     return () => listener.remove();
@@ -179,7 +247,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const remaining = Math.max(0, totalLimit - totalSpent);
   const percentage = totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) : 0;
 
-  // 1. Agregação Semanal Dinâmica (Segunda a Domingo da semana corrente)
   const weeklyData = useMemo<DaySpending[]>(() => {
     const now = new Date();
     const currentDay = now.getDay();
@@ -224,7 +291,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }));
   }, [transactions]);
 
-  // 2. Histórico Mensal Dinâmico (Últimos 6 meses até o mês atual)
   const monthlyHistory = useMemo<MonthSpending[]>(() => {
     const now = new Date();
     const list: MonthSpending[] = [];
@@ -259,7 +325,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return list;
   }, [transactions]);
 
-  // 3. Ranking de Gastos por Banco
   const bankSummaries = useMemo<BankSpendingSummary[]>(() => {
     const map = new Map<string, { spent: number; income: number; count: number; catCounts: Record<string, number> }>();
 
@@ -343,6 +408,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           percentage,
         },
         addManualTransaction,
+        updateCategoryBudget,
+        deleteTransaction,
+        updateTransaction,
       }}>
       {children}
     </FinanceContext.Provider>

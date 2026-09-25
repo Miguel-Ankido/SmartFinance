@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 import { Colors } from '../theme/colors';
@@ -8,7 +9,9 @@ import TransactionDetailModal from '../components/TransactionDetailModal';
 import WeeklyOutflowDetailModal from '../components/WeeklyOutflowDetailModal';
 
 export default function HomeScreen({ navigation }: any) {
-  const { totalBalance, totalIncome, totalExpenses, transactions, weeklyData } = useFinance();
+  const { user } = useAuth();
+const { totalBalance, totalIncome, totalExpenses, transactions, weeklyData } = useFinance();
+const firstName = user?.name ? user.name.split(' ')[0] : 'Usuário';
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [isWeeklyModalOpen, setIsWeeklyModalOpen] = useState(false);
 
@@ -19,7 +22,7 @@ export default function HomeScreen({ navigation }: any) {
       <View style={styles.header}>
         <View>
           <Text style={styles.welcomeLabel}>BEM-VINDO</Text>
-          <Text style={styles.userName}>Olá, Amanda</Text>
+          <Text style={styles.userName}>Olá, {firstName}</Text>
         </View>
         <View style={styles.avatarPlaceholder} />
       </View>

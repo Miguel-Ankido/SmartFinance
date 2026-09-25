@@ -71,7 +71,7 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
             val dateObj = Date(timestamp)
 
             val success = db.insertTransaction(
-                id = txMap.getString("id") ?: "${timestamp}",
+                id = txMap.getString("id") ?: "$timestamp",
                 title = txMap.getString("title") ?: "Lançamento",
                 amount = txMap.getDouble("amount"),
                 type = txMap.getString("type") ?: "EXPENSE",
@@ -96,6 +96,83 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
             promise.resolve(success)
         } catch (e: Exception) {
             promise.reject("DB_DELETE_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun getStoredBudgets(promise: Promise) {
+        try {
+            val db = AppDatabaseHelper(reactContext)
+            val budgets = db.getAllBudgets()
+            promise.resolve(budgets)
+        } catch (e: Exception) {
+            promise.reject("BUDGET_READ_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun saveCategoryBudget(categoryId: String, limitAmount: Double, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper(reactContext)
+            val success = db.saveBudget(categoryId, limitAmount)
+            promise.resolve(success)
+        } catch (e: Exception) {
+            promise.reject("BUDGET_WRITE_ERROR", e.message)
+        }
+    }
+
+    // --- AUTH METHODS ---
+    @ReactMethod
+    fun registerUser(name: String, email: String, password: String, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper(reactContext)
+            val id = "usr_${System.currentTimeMillis()}_${(1000..9999).random()}"
+            val success = db.registerUser(id, name, email, password)
+            if (success) {
+                val user = db.getActiveUser()
+                promise.resolve(user)
+            } else {
+                promise.reject("REGISTER_FAILED", "Este e-mail já está cadastrado no aplicativo.")
+            }
+        } catch (e: Exception) {
+            promise.reject("REGISTER_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun loginUser(email: String, password: String, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper(reactContext)
+            val user = db.loginUser(email, password)
+            if (user != null) {
+                promise.resolve(user)
+            } else {
+                promise.reject("AUTH_FAILED", "E-mail ou senha incorretos.")
+            }
+        } catch (e: Exception) {
+            promise.reject("LOGIN_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun getActiveUser(promise: Promise) {
+        try {
+            val db = AppDatabaseHelper(reactContext)
+            val user = db.getActiveUser()
+            promise.resolve(user)
+        } catch (e: Exception) {
+            promise.reject("SESSION_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun logoutUser(promise: Promise) {
+        try {
+            val db = AppDatabaseHelper(reactContext)
+            db.clearSession()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("LOGOUT_ERROR", e.message)
         }
     }
 

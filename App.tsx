@@ -1,12 +1,14 @@
 import React from 'react';
-import { StatusBar} from 'react-native';
+import { StatusBar, View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Svg, { Path, Rect } from 'react-native-svg';
 
+import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { FinanceProvider } from './src/context/FinanceContext';
 import { Colors } from './src/theme/colors';
 
+import AuthScreen from './src/screens/AuthScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import TransactionsScreen from './src/screens/TransactionsScreen';
 import BudgetScreen from './src/screens/BudgetScreen';
@@ -65,10 +67,23 @@ const tabScreenOptions = {
   },
 };
 
-export default function App(): React.JSX.Element {
+function RootNavigator() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
   return (
     <FinanceProvider>
-      <StatusBar barStyle="light-content" />
       <NavigationContainer>
         <Tab.Navigator screenOptions={tabScreenOptions}>
           <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarIcon: renderHomeIcon }} />
@@ -79,5 +94,14 @@ export default function App(): React.JSX.Element {
         </Tab.Navigator>
       </NavigationContainer>
     </FinanceProvider>
+  );
+}
+
+export default function App(): React.JSX.Element {
+  return (
+    <AuthProvider>
+      <StatusBar barStyle="light-content" />
+      <RootNavigator />
+    </AuthProvider>
   );
 }

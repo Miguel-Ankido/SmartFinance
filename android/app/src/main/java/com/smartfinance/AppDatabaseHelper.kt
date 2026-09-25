@@ -12,7 +12,7 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
 
     companion object {
         private const val DATABASE_NAME = "smartfinance.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 3
 
         const val TABLE_TRANSACTIONS = "transactions"
         const val COL_ID = "id"
@@ -25,10 +25,24 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         const val COL_TIMESTAMP = "timestamp"
         const val COL_TIME_FORMATTED = "time_formatted"
         const val COL_DATE_FORMATTED = "date_formatted"
+
+        const val TABLE_BUDGETS = "budgets"
+        const val COL_BUDGET_CAT_ID = "category_id"
+        const val COL_BUDGET_LIMIT = "limit_amount"
+
+        const val TABLE_USERS = "users"
+        const val COL_USER_ID = "id"
+        const val COL_USER_NAME = "name"
+        const val COL_USER_EMAIL = "email"
+        const val COL_USER_PASSWORD = "password"
+        const val COL_USER_CREATED_AT = "created_at"
+
+        const val TABLE_SESSION = "session"
+        const val COL_SESSION_USER_ID = "user_id"
     }
 
     override fun onCreate(db: SQLiteDatabase?) {
-        val createTableQuery = """
+        val createTxTable = """
             CREATE TABLE IF NOT EXISTS $TABLE_TRANSACTIONS (
                 $COL_ID TEXT PRIMARY KEY,
                 $COL_TITLE TEXT,
@@ -42,14 +56,69 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
                 $COL_DATE_FORMATTED TEXT
             )
         """.trimIndent()
-        db?.execSQL(createTableQuery)
+        db?.execSQL(createTxTable)
+
+        val createBudgetTable = """
+            CREATE TABLE IF NOT EXISTS $TABLE_BUDGETS (
+                $COL_BUDGET_CAT_ID TEXT PRIMARY KEY,
+                $COL_BUDGET_LIMIT REAL
+            )
+        """.trimIndent()
+        db?.execSQL(createBudgetTable)
+
+        val createUsersTable = """
+            CREATE TABLE IF NOT EXISTS $TABLE_USERS (
+                $COL_USER_ID TEXT PRIMARY KEY,
+                $COL_USER_NAME TEXT,
+                $COL_USER_EMAIL TEXT UNIQUE,
+                $COL_USER_PASSWORD TEXT,
+                $COL_USER_CREATED_AT INTEGER
+            )
+        """.trimIndent()
+        db?.execSQL(createUsersTable)
+
+        val createSessionTable = """
+            CREATE TABLE IF NOT EXISTS $TABLE_SESSION (
+                id INTEGER PRIMARY KEY,
+                $COL_SESSION_USER_ID TEXT
+            )
+        """.trimIndent()
+        db?.execSQL(createSessionTable)
     }
 
     override fun onUpgrade(db: SQLiteDatabase?, oldVersion: Int, newVersion: Int) {
-        db?.execSQL("DROP TABLE IF EXISTS $TABLE_TRANSACTIONS")
-        onCreate(db)
+        if (oldVersion < 2) {
+            val createBudgetTable = """
+                CREATE TABLE IF NOT EXISTS $TABLE_BUDGETS (
+                    $COL_BUDGET_CAT_ID TEXT PRIMARY KEY,
+                    $COL_BUDGET_LIMIT REAL
+                )
+            """.trimIndent()
+            db?.execSQL(createBudgetTable)
+        }
+        if (oldVersion < 3) {
+            val createUsersTable = """
+                CREATE TABLE IF NOT EXISTS $TABLE_USERS (
+                    $COL_USER_ID TEXT PRIMARY KEY,
+                    $COL_USER_NAME TEXT,
+                    $COL_USER_EMAIL TEXT UNIQUE,
+                    $COL_USER_PASSWORD TEXT,
+                    $COL_USER_CREATED_AT INTEGER
+                )
+            """.trimIndent()
+            db?.execSQL(createUsersTable)
+
+            val createSessionTable = """
+                CREATE TABLE IF NOT EXISTS $TABLE_SESSION (
+                    id INTEGER PRIMARY KEY,
+                    $COL_SESSION_USER_ID TEXT
+                )
+            """.trimIndent()
+            db?.execSQL(createSessionTable)
+        }
     }
 
+    // --- TRANSACTIONS ---
     fun insertTransaction(
         id: String,
         title: String,
@@ -112,5 +181,118 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
     fun deleteTransaction(id: String): Boolean {
         val db = writableDatabase
         return db.delete(TABLE_TRANSACTIONS, "$COL_ID = ?", arrayOf(id)) > 0
+    }
+
+    // --- BUDGETS ---
+    fun saveBudget(categoryId: String, limitAmount: Double): Boolean {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COL_BUDGET_CAT_ID, categoryId)
+            put(COL_BUDGET_LIMIT, limitAmount)
+        }
+        val result = db.insertWithOnConflict(TABLE_BUDGETS, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+        return result != -1L
+    }
+
+    fun getAllBudgets(): WritableMap {
+        val map: WritableMap = Arguments.createMap()
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT * FROM $TABLE_BUDGETS", null)
+        if (cursor.moveToFirst()) {
+            do {
+                val catId = cursor.getString(cursor.getColumnIndexOrThrow(COL_BUDGET_CAT_ID))
+                val limit = cursor.getDouble(cursor.getColumnIndexOrThrow(COL_BUDGET_LIMIT))
+                map.putDouble(catId, limit)
+            } while (cursor.moveToNext())
+        }
+        cursor.close()
+        return map
+    }
+
+    // --- USERS & SESSION ---
+    fun registerUser(id: String, name: String, email: String, password: String): Boolean {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COL_USER_ID, id)
+            put(COL_USER_NAME, name)
+            put(COL_USER_EMAIL, email.trim().lowercase())
+            put(COL_USER_PASSWORD, password)
+            put(COL_USER_CREATED_AT, System.currentTimeMillis())
+        }
+        val result = db.insert(TABLE_USERS, null, values)
+        if (result != -1L) {
+            setActiveSession(id)
+            return true
+        }
+        return false
+    }
+
+    fun loginUser(email: String, password: String): WritableMap? {
+        val db = readableDatabase
+        val cursor = db.rawQuery(
+            "SELECT * FROM $TABLE_USERS WHERE $COL_USER_EMAIL = ? AND $COL_USER_PASSWORD = ?",
+            arrayOf(email.trim().lowercase(), password)
+        )
+        if (cursor.moveToFirst()) {
+            val userId = cursor.getString(cursor.getColumnIndexOrThrow(COL_USER_ID))
+            val userName = cursor.getString(cursor.getColumnIndexOrThrow(COL_USER_NAME))
+            val userEmail = cursor.getString(cursor.getColumnIndexOrThrow(COL_USER_EMAIL))
+            val createdAt = cursor.getLong(cursor.getColumnIndexOrThrow(COL_USER_CREATED_AT))
+            cursor.close()
+
+            setActiveSession(userId)
+
+            return Arguments.createMap().apply {
+                putString("id", userId)
+                putString("name", userName)
+                putString("email", userEmail)
+                putDouble("createdAt", createdAt.toDouble())
+            }
+        }
+        cursor.close()
+        return null
+    }
+
+    fun setActiveSession(userId: String) {
+        val db = writableDatabase
+        db.execSQL("DELETE FROM $TABLE_SESSION")
+        val values = ContentValues().apply {
+            put("id", 1)
+            put(COL_SESSION_USER_ID, userId)
+        }
+        db.insert(TABLE_SESSION, null, values)
+    }
+
+    fun clearSession() {
+        val db = writableDatabase
+        db.execSQL("DELETE FROM $TABLE_SESSION")
+    }
+
+    fun getActiveUser(): WritableMap? {
+        val db = readableDatabase
+        val sessionCursor = db.rawQuery("SELECT $COL_SESSION_USER_ID FROM $TABLE_SESSION LIMIT 1", null)
+        if (!sessionCursor.moveToFirst()) {
+            sessionCursor.close()
+            return null
+        }
+        val userId = sessionCursor.getString(0)
+        sessionCursor.close()
+
+        val userCursor = db.rawQuery("SELECT * FROM $TABLE_USERS WHERE $COL_USER_ID = ?", arrayOf(userId))
+        if (userCursor.moveToFirst()) {
+            val userName = userCursor.getString(userCursor.getColumnIndexOrThrow(COL_USER_NAME))
+            val userEmail = userCursor.getString(userCursor.getColumnIndexOrThrow(COL_USER_EMAIL))
+            val createdAt = userCursor.getLong(userCursor.getColumnIndexOrThrow(COL_USER_CREATED_AT))
+            userCursor.close()
+
+            return Arguments.createMap().apply {
+                putString("id", userId)
+                putString("name", userName)
+                putString("email", userEmail)
+                putDouble("createdAt", createdAt.toDouble())
+            }
+        }
+        userCursor.close()
+        return null
     }
 }
