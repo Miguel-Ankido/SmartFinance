@@ -87,11 +87,15 @@ class NotificationService : NotificationListenerService() {
         val dateFormatted = dateFormat.format(dateObj)
         val id = "${postTime}_${(1000..9999).random()}"
 
-        // 2. Persistência imediata no SQLite nativo (mesmo com app fechado)
+        // Obter o usuário logado na sessão ativa
+        val db = AppDatabaseHelper(applicationContext)
+        val currentUserId = db.getActiveUserId()
+
+        // 2. Persistência imediata no SQLite nativo vinculado ao usuário logado
         try {
-            val db = AppDatabaseHelper(applicationContext)
             db.insertTransaction(
                 id = id,
+                userId = currentUserId,
                 title = merchantTitle,
                 amount = amount,
                 type = type,
@@ -109,6 +113,7 @@ class NotificationService : NotificationListenerService() {
         // 3. Emissão para a interface React Native (se o app estiver em execução)
         val params: WritableMap = Arguments.createMap().apply {
             putString("id", id)
+            putString("userId", currentUserId ?: "")
             putString("packageName", packageName)
             putString("title", merchantTitle)
             putString("text", fullContent)
@@ -122,5 +127,9 @@ class NotificationService : NotificationListenerService() {
         }
 
         NotificationModule.sendEvent("onBankNotificationReceived", params)
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        super.onNotificationRemoved(sbn)
     }
 }

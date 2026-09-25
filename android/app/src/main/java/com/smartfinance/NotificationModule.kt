@@ -51,17 +51,17 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getStoredTransactions(promise: Promise) {
+    fun getStoredTransactions(userId: String?, promise: Promise) {
         try {
             val db = AppDatabaseHelper(reactContext)
-            val transactions = db.getAllTransactions()
+            val transactions = db.getTransactionsForUser(userId)
             promise.resolve(transactions)
         } catch (e: Exception) {
             promise.reject("DB_READ_ERROR", e.message)
         }
     }
 
-    @ReactMethod
+   @ReactMethod
     fun saveManualTransaction(txMap: ReadableMap, promise: Promise) {
         try {
             val db = AppDatabaseHelper(reactContext)
@@ -69,9 +69,11 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
             val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
             val dateFormat = SimpleDateFormat("dd 'de' MMMM 'de' yyyy", Locale.getDefault())
             val dateObj = Date(timestamp)
+            val userId = if (txMap.hasKey("userId")) txMap.getString("userId") else null
 
             val success = db.insertTransaction(
                 id = txMap.getString("id") ?: "$timestamp",
+                userId = userId,
                 title = txMap.getString("title") ?: "Lançamento",
                 amount = txMap.getDouble("amount"),
                 type = txMap.getString("type") ?: "EXPENSE",
@@ -89,10 +91,10 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun deleteTransaction(id: String, promise: Promise) {
+    fun deleteTransaction(id: String, userId: String?, promise: Promise) {
         try {
             val db = AppDatabaseHelper(reactContext)
-            val success = db.deleteTransaction(id)
+            val success = db.deleteTransaction(id, userId)
             promise.resolve(success)
         } catch (e: Exception) {
             promise.reject("DB_DELETE_ERROR", e.message)
@@ -100,10 +102,10 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getStoredBudgets(promise: Promise) {
+    fun getStoredBudgets(userId: String?, promise: Promise) {
         try {
             val db = AppDatabaseHelper(reactContext)
-            val budgets = db.getAllBudgets()
+            val budgets = db.getBudgetsForUser(userId)
             promise.resolve(budgets)
         } catch (e: Exception) {
             promise.reject("BUDGET_READ_ERROR", e.message)
@@ -111,10 +113,10 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun saveCategoryBudget(categoryId: String, limitAmount: Double, promise: Promise) {
+    fun saveCategoryBudget(categoryId: String, limitAmount: Double, userId: String?, promise: Promise) {
         try {
             val db = AppDatabaseHelper(reactContext)
-            val success = db.saveBudget(categoryId, limitAmount)
+            val success = db.saveBudget(userId, categoryId, limitAmount)
             promise.resolve(success)
         } catch (e: Exception) {
             promise.reject("BUDGET_WRITE_ERROR", e.message)

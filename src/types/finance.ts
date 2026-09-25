@@ -19,6 +19,7 @@ export interface CategoryData {
 
 export interface Transaction {
   id: string;
+  userId?: string;
   title: string;
   amount: number;
   type: TransactionType;

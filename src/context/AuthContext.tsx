@@ -32,8 +32,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(activeUser);
         }
       }
-    } catch (e) {
-      console.log('Sem sessão ativa');
+    } catch (error) {
+      console.log('Sem sessão ativa:', error);
     } finally {
       setIsLoading(false);
     }

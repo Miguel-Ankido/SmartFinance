@@ -1,5 +1,5 @@
 import React from 'react';
-import { StatusBar, View, ActivityIndicator } from 'react-native';
+import { StatusBar, View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Svg, { Path, Rect } from 'react-native-svg';
@@ -67,12 +67,21 @@ const tabScreenOptions = {
   },
 };
 
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});
+
 function RootNavigator() {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );

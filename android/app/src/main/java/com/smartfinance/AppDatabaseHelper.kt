@@ -12,10 +12,11 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
 
     companion object {
         private const val DATABASE_NAME = "smartfinance.db"
-        private const val DATABASE_VERSION = 3
+        private const val DATABASE_VERSION = 4
 
         const val TABLE_TRANSACTIONS = "transactions"
         const val COL_ID = "id"
+        const val COL_TX_USER_ID = "user_id"
         const val COL_TITLE = "title"
         const val COL_AMOUNT = "amount"
         const val COL_TYPE = "type"
@@ -27,6 +28,7 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         const val COL_DATE_FORMATTED = "date_formatted"
 
         const val TABLE_BUDGETS = "budgets"
+        const val COL_BUDGET_USER_ID = "user_id"
         const val COL_BUDGET_CAT_ID = "category_id"
         const val COL_BUDGET_LIMIT = "limit_amount"
 
@@ -45,6 +47,7 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         val createTxTable = """
             CREATE TABLE IF NOT EXISTS $TABLE_TRANSACTIONS (
                 $COL_ID TEXT PRIMARY KEY,
+                $COL_TX_USER_ID TEXT,
                 $COL_TITLE TEXT,
                 $COL_AMOUNT REAL,
                 $COL_TYPE TEXT,
@@ -60,8 +63,10 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
 
         val createBudgetTable = """
             CREATE TABLE IF NOT EXISTS $TABLE_BUDGETS (
-                $COL_BUDGET_CAT_ID TEXT PRIMARY KEY,
-                $COL_BUDGET_LIMIT REAL
+                $COL_BUDGET_USER_ID TEXT,
+                $COL_BUDGET_CAT_ID TEXT,
+                $COL_BUDGET_LIMIT REAL,
+                PRIMARY KEY ($COL_BUDGET_USER_ID, $COL_BUDGET_CAT_ID)
             )
         """.trimIndent()
         db?.execSQL(createBudgetTable)
@@ -88,39 +93,46 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
 
     override fun onUpgrade(db: SQLiteDatabase?, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
-            val createBudgetTable = """
-                CREATE TABLE IF NOT EXISTS $TABLE_BUDGETS (
-                    $COL_BUDGET_CAT_ID TEXT PRIMARY KEY,
-                    $COL_BUDGET_LIMIT REAL
-                )
-            """.trimIndent()
-            db?.execSQL(createBudgetTable)
+            db?.execSQL("CREATE TABLE IF NOT EXISTS $TABLE_BUDGETS ($COL_BUDGET_CAT_ID TEXT PRIMARY KEY, $COL_BUDGET_LIMIT REAL)")
         }
         if (oldVersion < 3) {
-            val createUsersTable = """
-                CREATE TABLE IF NOT EXISTS $TABLE_USERS (
-                    $COL_USER_ID TEXT PRIMARY KEY,
-                    $COL_USER_NAME TEXT,
-                    $COL_USER_EMAIL TEXT UNIQUE,
-                    $COL_USER_PASSWORD TEXT,
-                    $COL_USER_CREATED_AT INTEGER
-                )
-            """.trimIndent()
-            db?.execSQL(createUsersTable)
-
-            val createSessionTable = """
-                CREATE TABLE IF NOT EXISTS $TABLE_SESSION (
-                    id INTEGER PRIMARY KEY,
-                    $COL_SESSION_USER_ID TEXT
-                )
-            """.trimIndent()
-            db?.execSQL(createSessionTable)
+            db?.execSQL("CREATE TABLE IF NOT EXISTS $TABLE_USERS ($COL_USER_ID TEXT PRIMARY KEY, $COL_USER_NAME TEXT, $COL_USER_EMAIL TEXT UNIQUE, $COL_USER_PASSWORD TEXT, $COL_USER_CREATED_AT INTEGER)")
+            db?.execSQL("CREATE TABLE IF NOT EXISTS $TABLE_SESSION (id INTEGER PRIMARY KEY, $COL_SESSION_USER_ID TEXT)")
+        }
+        if (oldVersion < 4) {
+            try {
+                db?.execSQL("ALTER TABLE $TABLE_TRANSACTIONS ADD COLUMN $COL_TX_USER_ID TEXT")
+            } catch (_: Exception) {}
+            try {
+                db?.execSQL("DROP TABLE IF EXISTS $TABLE_BUDGETS")
+                db?.execSQL("""
+                    CREATE TABLE IF NOT EXISTS $TABLE_BUDGETS (
+                        $COL_BUDGET_USER_ID TEXT,
+                        $COL_BUDGET_CAT_ID TEXT,
+                        $COL_BUDGET_LIMIT REAL,
+                        PRIMARY KEY ($COL_BUDGET_USER_ID, $COL_BUDGET_CAT_ID)
+                    )
+                """.trimIndent())
+            } catch (_: Exception) {}
         }
     }
 
-    // --- TRANSACTIONS ---
+    // --- SESSÃO ATIVA ---
+    fun getActiveUserId(): String? {
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT $COL_SESSION_USER_ID FROM $TABLE_SESSION LIMIT 1", null)
+        var userId: String? = null
+        if (cursor.moveToFirst()) {
+            userId = cursor.getString(0)
+        }
+        cursor.close()
+        return userId
+    }
+
+    // --- TRANSAÇÕES FILTRADAS POR USUÁRIO ---
     fun insertTransaction(
         id: String,
+        userId: String?,
         title: String,
         amount: Double,
         type: String,
@@ -132,8 +144,10 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         dateFormatted: String
     ): Boolean {
         val db = writableDatabase
+        val targetUserId = userId ?: getActiveUserId() ?: "guest"
         val values = ContentValues().apply {
             put(COL_ID, id)
+            put(COL_TX_USER_ID, targetUserId)
             put(COL_TITLE, title)
             put(COL_AMOUNT, amount)
             put(COL_TYPE, type)
@@ -148,18 +162,21 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         return result != -1L
     }
 
-    fun getAllTransactions(): WritableArray {
+    fun getTransactionsForUser(userId: String?): WritableArray {
         val array: WritableArray = Arguments.createArray()
         val db = readableDatabase
+        val targetUserId = userId ?: getActiveUserId() ?: return array
+
         val cursor = db.rawQuery(
-            "SELECT * FROM $TABLE_TRANSACTIONS ORDER BY $COL_TIMESTAMP DESC",
-            null
+            "SELECT * FROM $TABLE_TRANSACTIONS WHERE $COL_TX_USER_ID = ? ORDER BY $COL_TIMESTAMP DESC",
+            arrayOf(targetUserId)
         )
 
         if (cursor.moveToFirst()) {
             do {
                 val map: WritableMap = Arguments.createMap().apply {
                     putString("id", cursor.getString(cursor.getColumnIndexOrThrow(COL_ID)))
+                    putString("userId", cursor.getString(cursor.getColumnIndexOrThrow(COL_TX_USER_ID)))
                     putString("title", cursor.getString(cursor.getColumnIndexOrThrow(COL_TITLE)))
                     putDouble("amount", cursor.getDouble(cursor.getColumnIndexOrThrow(COL_AMOUNT)))
                     putString("type", cursor.getString(cursor.getColumnIndexOrThrow(COL_TYPE)))
@@ -178,15 +195,22 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         return array
     }
 
-    fun deleteTransaction(id: String): Boolean {
+    fun deleteTransaction(id: String, userId: String?): Boolean {
         val db = writableDatabase
-        return db.delete(TABLE_TRANSACTIONS, "$COL_ID = ?", arrayOf(id)) > 0
+        val targetUserId = userId ?: getActiveUserId()
+        return if (targetUserId != null) {
+            db.delete(TABLE_TRANSACTIONS, "$COL_ID = ? AND $COL_TX_USER_ID = ?", arrayOf(id, targetUserId)) > 0
+        } else {
+            db.delete(TABLE_TRANSACTIONS, "$COL_ID = ?", arrayOf(id)) > 0
+        }
     }
 
-    // --- BUDGETS ---
-    fun saveBudget(categoryId: String, limitAmount: Double): Boolean {
+    // --- METAS FILTRADAS POR USUÁRIO ---
+    fun saveBudget(userId: String?, categoryId: String, limitAmount: Double): Boolean {
         val db = writableDatabase
+        val targetUserId = userId ?: getActiveUserId() ?: return false
         val values = ContentValues().apply {
+            put(COL_BUDGET_USER_ID, targetUserId)
             put(COL_BUDGET_CAT_ID, categoryId)
             put(COL_BUDGET_LIMIT, limitAmount)
         }
@@ -194,10 +218,15 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         return result != -1L
     }
 
-    fun getAllBudgets(): WritableMap {
+    fun getBudgetsForUser(userId: String?): WritableMap {
         val map: WritableMap = Arguments.createMap()
         val db = readableDatabase
-        val cursor = db.rawQuery("SELECT * FROM $TABLE_BUDGETS", null)
+        val targetUserId = userId ?: getActiveUserId() ?: return map
+
+        val cursor = db.rawQuery(
+            "SELECT * FROM $TABLE_BUDGETS WHERE $COL_BUDGET_USER_ID = ?",
+            arrayOf(targetUserId)
+        )
         if (cursor.moveToFirst()) {
             do {
                 val catId = cursor.getString(cursor.getColumnIndexOrThrow(COL_BUDGET_CAT_ID))
@@ -209,7 +238,7 @@ class AppDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         return map
     }
 
-    // --- USERS & SESSION ---
+    // --- AUTENTICAÇÃO ---
     fun registerUser(id: String, name: String, email: String, password: String): Boolean {
         val db = writableDatabase
         val values = ContentValues().apply {

@@ -11,6 +11,7 @@ import {
   TransactionType,
 } from '../types/finance';
 import { Colors } from '../theme/colors';
+import { useAuth } from './AuthContext';
 
 const { NotificationModule } = NativeModules;
 const eventEmitter = new NativeEventEmitter(NotificationModule);
@@ -57,33 +58,53 @@ const initialCategories: CategoryData[] = [
   { id: 'others', name: 'Outros', color: Colors.textSecondary, budgetLimit: 400, spent: 0 },
 ];
 
+const recalculateCategoryExpenses = (txList: Transaction[], currentCategories: CategoryData[]): CategoryData[] => {
+  return currentCategories.map(cat => {
+    const totalSpentInCat = txList
+      .filter(t => t.category === cat.id && t.type === 'EXPENSE')
+      .reduce((acc, curr) => acc + curr.amount, 0);
+    return { ...cat, spent: totalSpentInCat };
+  });
+};
+
 const FinanceContext = createContext<FinanceContextData>({} as FinanceContextData);
 
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const currentUserId = user?.id;
+
   const [hasPermission, setHasPermission] = useState<boolean>(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<CategoryData[]>(initialCategories);
 
-  const recalculateCategoryExpenses = (txList: Transaction[], currentCategories: CategoryData[]) => {
-    return currentCategories.map(cat => {
-      const totalSpentInCat = txList
-        .filter(t => t.category === cat.id && t.type === 'EXPENSE')
-        .reduce((acc, curr) => acc + curr.amount, 0);
-      return { ...cat, spent: totalSpentInCat };
-    });
-  };
+  const checkPermission = useCallback(async () => {
+    try {
+      if (NotificationModule?.isNotificationPermissionGranted) {
+        const granted: boolean = await NotificationModule.isNotificationPermissionGranted();
+        setHasPermission(granted);
+      }
+    } catch (error) {
+      console.error('Erro checando permissão:', error);
+    }
+  }, []);
+
+  const requestPermission = useCallback(() => {
+    NotificationModule?.requestNotificationPermission?.();
+  }, []);
 
   const loadStoredData = useCallback(async () => {
+    if (!currentUserId) return;
+
     try {
       if (NotificationModule?.getStoredTransactions) {
-        const stored: Transaction[] = await NotificationModule.getStoredTransactions();
+        const stored: Transaction[] = await NotificationModule.getStoredTransactions(currentUserId);
         let storedBudgets: Record<string, number> = {};
 
         if (NotificationModule?.getStoredBudgets) {
           try {
-            storedBudgets = await NotificationModule.getStoredBudgets();
-          } catch (err) {
-            console.log('Sem budgets salvos ainda');
+            storedBudgets = await NotificationModule.getStoredBudgets(currentUserId);
+          } catch (budgetError) {
+            console.log('Sem budgets salvos ainda:', budgetError);
           }
         }
 
@@ -109,22 +130,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (e) {
       console.error('Erro ao ler SQLite nativo:', e);
     }
-  }, []);
-
-  const checkPermission = useCallback(async () => {
-    try {
-      if (NotificationModule?.isNotificationPermissionGranted) {
-        const granted: boolean = await NotificationModule.isNotificationPermissionGranted();
-        setHasPermission(granted);
-      }
-    } catch (e) {
-      console.error('Erro checando permissão:', e);
-    }
-  }, []);
-
-  const requestPermission = () => {
-    NotificationModule?.requestNotificationPermission?.();
-  };
+  }, [currentUserId]);
 
   useEffect(() => {
     checkPermission();
@@ -139,78 +145,96 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => sub.remove();
   }, [checkPermission, loadStoredData]);
 
-  const addManualTransaction = useCallback((data: NewTransactionInput) => {
-    const now = Date.now();
-    const newTx: Transaction = {
-      id: `manual_${now}_${Math.random().toString(36).substring(2, 7)}`,
-      title: data.title.trim() || (data.type === 'EXPENSE' ? 'Despesa Manual' : 'Receita Manual'),
-      amount: data.amount,
-      type: data.type,
-      category: data.category,
-      bankName: data.bankName,
-      note: data.note,
-      timestamp: now,
-      timeFormatted: new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      dateFormatted: 'Hoje',
-      dateGroup: 'TODAY',
-    };
+  const addManualTransaction = useCallback(
+    (data: NewTransactionInput) => {
+      const now = Date.now();
+      const newTx: Transaction = {
+        id: `manual_${now}_${Math.random().toString(36).substring(2, 7)}`,
+        userId: currentUserId,
+        title: data.title.trim() || (data.type === 'EXPENSE' ? 'Despesa Manual' : 'Receita Manual'),
+        amount: data.amount,
+        type: data.type,
+        category: data.category,
+        bankName: data.bankName,
+        note: data.note,
+        timestamp: now,
+        timeFormatted: new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        dateFormatted: 'Hoje',
+        dateGroup: 'TODAY',
+      };
 
-    NotificationModule?.saveManualTransaction?.(newTx);
-    setTransactions(prev => {
-      const updated = [newTx, ...prev];
-      setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
-      return updated;
-    });
-  }, []);
+      NotificationModule?.saveManualTransaction?.(newTx);
+      setTransactions(prev => {
+        const updated = [newTx, ...prev];
+        setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
+        return updated;
+      });
+    },
+    [currentUserId]
+  );
 
-  const updateCategoryBudget = useCallback((categoryId: CategoryId, newLimit: number) => {
-    try {
-      NotificationModule?.saveCategoryBudget?.(categoryId, newLimit);
-    } catch (err) {
-      console.error('Erro salvando meta nativa:', err);
-    }
-
-    setCategories(prev =>
-      prev.map(cat => (cat.id === categoryId ? { ...cat, budgetLimit: newLimit } : cat))
-    );
-  }, []);
-
-  const deleteTransaction = useCallback(async (id: string) => {
-    try {
-      if (NotificationModule?.deleteTransaction) {
-        await NotificationModule.deleteTransaction(id);
+  const updateCategoryBudget = useCallback(
+    (categoryId: CategoryId, newLimit: number) => {
+      try {
+        NotificationModule?.saveCategoryBudget?.(categoryId, newLimit, currentUserId);
+      } catch (err) {
+        console.error('Erro salvando meta nativa:', err);
       }
-    } catch (e) {
-      console.error('Erro ao deletar transação no SQLite nativo:', e);
-    }
 
-    setTransactions(prev => {
-      const updated = prev.filter(t => t.id !== id);
-      setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
-      return updated;
-    });
-  }, []);
+      setCategories(prev =>
+        prev.map(cat => (cat.id === categoryId ? { ...cat, budgetLimit: newLimit } : cat))
+      );
+    },
+    [currentUserId]
+  );
 
-  const updateTransaction = useCallback(async (updatedTx: Transaction) => {
-    try {
-      if (NotificationModule?.saveManualTransaction) {
-        await NotificationModule.saveManualTransaction(updatedTx);
+  const deleteTransaction = useCallback(
+    async (id: string) => {
+      try {
+        if (NotificationModule?.deleteTransaction) {
+          await NotificationModule.deleteTransaction(id, currentUserId);
+        }
+      } catch (e) {
+        console.error('Erro ao deletar transação no SQLite nativo:', e);
       }
-    } catch (e) {
-      console.error('Erro ao atualizar transação no SQLite nativo:', e);
-    }
 
-    setTransactions(prev => {
-      const updated = prev.map(t => (t.id === updatedTx.id ? updatedTx : t));
-      setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
-      return updated;
-    });
-  }, []);
+      setTransactions(prev => {
+        const updated = prev.filter(t => t.id !== id);
+        setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
+        return updated;
+      });
+    },
+    [currentUserId]
+  );
+
+  const updateTransaction = useCallback(
+    async (updatedTx: Transaction) => {
+      try {
+        if (NotificationModule?.saveManualTransaction) {
+          await NotificationModule.saveManualTransaction({ ...updatedTx, userId: currentUserId });
+        }
+      } catch (e) {
+        console.error('Erro ao atualizar transação no SQLite nativo:', e);
+      }
+
+      setTransactions(prev => {
+        const updated = prev.map(t => (t.id === updatedTx.id ? updatedTx : t));
+        setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
+        return updated;
+      });
+    },
+    [currentUserId]
+  );
 
   useEffect(() => {
     const listener = eventEmitter.addListener('onBankNotificationReceived', (event: any) => {
+      if (event.userId && currentUserId && event.userId !== currentUserId) {
+        return;
+      }
+
       const newTx: Transaction = {
         id: event.id || `${Date.now()}`,
+        userId: currentUserId,
         title: event.title,
         amount: event.amount,
         type: event.type,
@@ -231,7 +255,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     return () => listener.remove();
-  }, []);
+  }, [currentUserId]);
 
   const totalIncome = transactions
     .filter(t => t.type === 'INCOME')
@@ -294,7 +318,20 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const monthlyHistory = useMemo<MonthSpending[]>(() => {
     const now = new Date();
     const list: MonthSpending[] = [];
-    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const monthNames = [
+      'Janeiro',
+      'Fevereiro',
+      'Março',
+      'Abril',
+      'Maio',
+      'Junho',
+      'Julho',
+      'Agosto',
+      'Setembro',
+      'Outubro',
+      'Novembro',
+      'Dezembro',
+    ];
     const monthShorts = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
     for (let i = 5; i >= 0; i--) {
