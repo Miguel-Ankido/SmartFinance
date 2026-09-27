@@ -7,6 +7,7 @@ import { Transaction } from '../types/finance';
 import { useFinance } from '../context/FinanceContext';
 import TransactionDetailModal from '../components/TransactionDetailModal';
 import WeeklyOutflowDetailModal from '../components/WeeklyOutflowDetailModal';
+import { NotificationPermissionCard } from '../components/NotificationPermissionCard';
 
 export default function HomeScreen({ navigation }: any) {
   const { user } = useAuth();
@@ -26,6 +27,8 @@ const firstName = user?.name ? user.name.split(' ')[0] : 'Usuário';
         </View>
         <View style={styles.avatarPlaceholder} />
       </View>
+
+      <NotificationPermissionCard />
 
       <View style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>SALDO TOTAL CONSOLIDADO</Text>

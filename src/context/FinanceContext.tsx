@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { NativeModules, NativeEventEmitter, AppState, AppStateStatus } from 'react-native';
+import { NativeModules, AppState, AppStateStatus } from 'react-native';
 import {
   Transaction,
   CategoryData,
@@ -12,9 +12,12 @@ import {
 } from '../types/finance';
 import { Colors } from '../theme/colors';
 import { useAuth } from './AuthContext';
+import {
+  subscribeToBankNotifications,
+  type CapturedBankTransaction,
+} from '../services/notificationListener';
 
 const { NotificationModule } = NativeModules;
-const eventEmitter = new NativeEventEmitter(NotificationModule);
 
 interface NewTransactionInput {
   title: string;
@@ -65,6 +68,30 @@ const recalculateCategoryExpenses = (txList: Transaction[], currentCategories: C
       .reduce((acc, curr) => acc + curr.amount, 0);
     return { ...cat, spent: totalSpentInCat };
   });
+};
+
+const toFinanceTransaction = (transaction: CapturedBankTransaction): Transaction => {
+  const parsedTimestamp = new Date(transaction.date).getTime();
+  const timestamp = Number.isNaN(parsedTimestamp) ? Date.now() : parsedTimestamp;
+  const occurredAt = new Date(timestamp);
+
+  return {
+    id: transaction.id,
+    userId: transaction.user_id,
+    title: transaction.merchant || 'Automatic transaction',
+    amount: transaction.amount,
+    type: transaction.type,
+    category: transaction.type === 'INCOME' ? 'salary' : 'others',
+    bankName: transaction.bankName,
+    note: transaction.description,
+    timestamp,
+    timeFormatted: occurredAt.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    dateFormatted: occurredAt.toLocaleDateString('pt-BR'),
+    dateGroup: 'TODAY',
+  };
 };
 
 const FinanceContext = createContext<FinanceContextData>({} as FinanceContextData);
@@ -227,25 +254,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 
   useEffect(() => {
-    const listener = eventEmitter.addListener('onBankNotificationReceived', (event: any) => {
-      if (event.userId && currentUserId && event.userId !== currentUserId) {
-        return;
-      }
+    if (!currentUserId) {
+      return undefined;
+    }
 
-      const newTx: Transaction = {
-        id: event.id || `${Date.now()}`,
-        userId: currentUserId,
-        title: event.title,
-        amount: event.amount,
-        type: event.type,
-        category: event.category,
-        bankName: event.bankName,
-        note: event.text,
-        timestamp: event.timestamp,
-        timeFormatted: event.timeFormatted,
-        dateFormatted: event.dateFormatted,
-        dateGroup: 'TODAY',
-      };
+    return subscribeToBankNotifications(currentUserId, capturedTransaction => {
+      const newTx = toFinanceTransaction(capturedTransaction);
 
       setTransactions(prev => {
         const updated = [newTx, ...prev];
@@ -253,8 +267,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return updated;
       });
     });
-
-    return () => listener.remove();
   }, [currentUserId]);
 
   const totalIncome = transactions

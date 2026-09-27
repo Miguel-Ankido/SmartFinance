@@ -27,6 +27,16 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
                 ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                 ?.emit(eventName, params)
         }
+
+        fun sendEventToJS(packageName: String, title: String, text: String, postTime: Long) {
+            val params = Arguments.createMap().apply {
+                putString("packageName", packageName)
+                putString("title", title)
+                putString("text", text)
+                putDouble("postTime", postTime.toDouble())
+            }
+            sendEvent("onNotificationReceived", params)
+        }
     }
 
     init {
