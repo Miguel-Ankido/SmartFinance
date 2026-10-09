@@ -10,8 +10,10 @@ import {
   CategoryId,
   TransactionType,
 } from '../types/finance';
+import { Transaction as DbTransaction } from '../types/database';
 import { Colors } from '../theme/colors';
 import { useAuth } from './AuthContext';
+import { syncService } from '../services/syncService';
 import {
   subscribeToBankNotifications,
   type CapturedBankTransaction,
@@ -78,7 +80,7 @@ const toFinanceTransaction = (transaction: CapturedBankTransaction): Transaction
   return {
     id: transaction.id,
     userId: transaction.user_id,
-    title: transaction.merchant || 'Automatic transaction',
+    title: transaction.merchant || 'Transação Automática',
     amount: transaction.amount,
     type: transaction.type,
     category: transaction.type === 'INCOME' ? 'salary' : 'others',
@@ -94,6 +96,26 @@ const toFinanceTransaction = (transaction: CapturedBankTransaction): Transaction
   };
 };
 
+const mapToDbTransaction = (tx: Transaction, userId: string, isDeleted = false): DbTransaction => {
+  const isoDate = new Date(tx.timestamp || Date.now()).toISOString();
+  return {
+    id: tx.id,
+    user_id: userId,
+    account_id: undefined,
+    category_id: tx.category,
+    amount: tx.amount,
+    type: tx.type,
+    payment_method: 'PIX',
+    merchant: tx.title || 'Transação',
+    description: tx.note || tx.bankName || '',
+    date: isoDate,
+    is_business: false,
+    synced_at: null,
+    updated_at: new Date().toISOString(),
+    is_deleted: isDeleted,
+  };
+};
+
 const FinanceContext = createContext<FinanceContextData>({} as FinanceContextData);
 
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -103,6 +125,20 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [hasPermission, setHasPermission] = useState<boolean>(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<CategoryData[]>(initialCategories);
+
+  const pushToCloud = useCallback(
+    async (dbTxList: DbTransaction[]) => {
+      if (!currentUserId || currentUserId === 'default_user') {
+        return;
+      }
+      try {
+        await syncService.pushTransactions(dbTxList, currentUserId);
+      } catch (err) {
+        console.log('[SyncEngine] Transação salva localmente (subirá quando online):', err);
+      }
+    },
+    [currentUserId]
+  );
 
   const checkPermission = useCallback(async () => {
     try {
@@ -172,6 +208,21 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => sub.remove();
   }, [checkPermission, loadStoredData]);
 
+  // Escuta transações em tempo real do Supabase Realtime
+  useEffect(() => {
+    if (!currentUserId || currentUserId === 'default_user') {
+      return undefined;
+    }
+
+    const unsubscribe = syncService.subscribeToChanges(currentUserId, () => {
+      loadStoredData();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [currentUserId, loadStoredData]);
+
   const addManualTransaction = useCallback(
     (data: NewTransactionInput) => {
       const now = Date.now();
@@ -191,13 +242,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       };
 
       NotificationModule?.saveManualTransaction?.(newTx);
+
+      if (currentUserId) {
+        pushToCloud([mapToDbTransaction(newTx, currentUserId)]);
+      }
+
       setTransactions(prev => {
         const updated = [newTx, ...prev];
         setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
         return updated;
       });
     },
-    [currentUserId]
+    [currentUserId, pushToCloud]
   );
 
   const updateCategoryBudget = useCallback(
@@ -225,13 +281,20 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.error('Erro ao deletar transação no SQLite nativo:', e);
       }
 
+      if (currentUserId) {
+        const toDelete = transactions.find(t => t.id === id);
+        if (toDelete) {
+          pushToCloud([mapToDbTransaction(toDelete, currentUserId, true)]);
+        }
+      }
+
       setTransactions(prev => {
         const updated = prev.filter(t => t.id !== id);
         setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
         return updated;
       });
     },
-    [currentUserId]
+    [currentUserId, transactions, pushToCloud]
   );
 
   const updateTransaction = useCallback(
@@ -244,13 +307,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.error('Erro ao atualizar transação no SQLite nativo:', e);
       }
 
+      if (currentUserId) {
+        pushToCloud([mapToDbTransaction(updatedTx, currentUserId)]);
+      }
+
       setTransactions(prev => {
         const updated = prev.map(t => (t.id === updatedTx.id ? updatedTx : t));
         setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
         return updated;
       });
     },
-    [currentUserId]
+    [currentUserId, pushToCloud]
   );
 
   useEffect(() => {
@@ -261,13 +328,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return subscribeToBankNotifications(currentUserId, capturedTransaction => {
       const newTx = toFinanceTransaction(capturedTransaction);
 
+      pushToCloud([mapToDbTransaction(newTx, currentUserId)]);
+
       setTransactions(prev => {
         const updated = [newTx, ...prev];
         setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
         return updated;
       });
     });
-  }, [currentUserId]);
+  }, [currentUserId, pushToCloud]);
 
   const totalIncome = transactions
     .filter(t => t.type === 'INCOME')
@@ -331,18 +400,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const now = new Date();
     const list: MonthSpending[] = [];
     const monthNames = [
-      'Janeiro',
-      'Fevereiro',
-      'Março',
-      'Abril',
-      'Maio',
-      'Junho',
-      'Julho',
-      'Agosto',
-      'Setembro',
-      'Outubro',
-      'Novembro',
-      'Dezembro',
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
     ];
     const monthShorts = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 

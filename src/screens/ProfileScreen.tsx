@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, NativeModules } from 'react-native';
+import { type NavigationProp, useNavigation } from '@react-navigation/native';
 import { Colors } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import { useFinance } from '../context/FinanceContext';
 import { MonitoredBank } from '../types/finance';
+import type { RootStackParamList } from '../types/navigation';
 import ManageBanksModal from '../components/ManageBanksModal';
 import ExportReportModal from '../components/ExportReportModal';
 
 const { NotificationModule } = NativeModules;
 
 export default function ProfileScreen() {
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const { user, logout } = useAuth();
   const { hasPermission, requestPermission, transactions } = useFinance();
   const [banks, setBanks] = useState<MonitoredBank[]>([]);
@@ -102,6 +105,19 @@ export default function ProfileScreen() {
           <Text style={styles.memberBadgeText}>Membro desde {memberSince}</Text>
         </View>
       </View>
+
+      {user?.role === 'admin' ? (
+        <TouchableOpacity
+          style={styles.adminCard}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('AdminDashboard')}>
+          <View>
+            <Text style={styles.adminTitle}>Painel de Administração</Text>
+            <Text style={styles.adminSubtitle}>Saúde do sistema, segurança e telemetria</Text>
+          </View>
+          <Text style={styles.adminAction}>ABRIR</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {/* Seção de Relatórios e Exportação */}
       <Text style={styles.sectionTitle}>RELATÓRIOS E DADOS</Text>
@@ -218,6 +234,20 @@ const styles = StyleSheet.create({
   avatarInitialText: { color: '#000000', fontSize: 26, fontWeight: '900' },
   userName: { color: Colors.textPrimary, fontSize: 20, fontWeight: '800' },
   userEmail: { color: Colors.textSecondary, fontSize: 13, marginTop: 4 },
+  adminCard: {
+    backgroundColor: Colors.surfaceCard,
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  adminTitle: { color: Colors.textPrimary, fontSize: 14, fontWeight: '700' },
+  adminSubtitle: { color: Colors.textSecondary, fontSize: 11, marginTop: 4 },
+  adminAction: { color: Colors.background, backgroundColor: Colors.primary, fontSize: 10, fontWeight: '800', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
   memberBadge: {
     backgroundColor: Colors.surface,
     paddingHorizontal: 12,

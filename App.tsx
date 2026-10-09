@@ -13,6 +13,8 @@ import {
   NativeScrollEvent,
 } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { FinanceProvider } from './src/context/FinanceContext';
@@ -24,8 +26,11 @@ import TransactionsScreen from './src/screens/TransactionsScreen';
 import BudgetScreen from './src/screens/BudgetScreen';
 import StatsScreen from './src/screens/StatsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
+import type { RootStackParamList } from './src/types/navigation';
 
 const LOGO_IMG = require('./src/assets/SyncPayBlack.jpg');
+const RootStack = createNativeStackNavigator<RootStackParamList>();
 
 const renderHomeIcon = ({ color }: { color: string }) => (
   <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
@@ -181,7 +186,14 @@ function RootNavigator() {
 
   return (
     <FinanceProvider>
-      <SwipeableTabNavigator />
+      <RootStack.Navigator screenOptions={{ headerShown: false }}>
+        <RootStack.Screen name="MainTabs" component={SwipeableTabNavigator} />
+        {user.role === 'admin' ? (
+          <RootStack.Screen name="AdminDashboard">
+            {({ navigation }) => <AdminDashboardScreen onClose={() => navigation.goBack()} />}
+          </RootStack.Screen>
+        ) : null}
+      </RootStack.Navigator>
     </FinanceProvider>
   );
 }
@@ -189,8 +201,10 @@ function RootNavigator() {
 export default function App(): React.JSX.Element {
   return (
     <AuthProvider>
-      <StatusBar barStyle="light-content" />
-      <RootNavigator />
+      <NavigationContainer>
+        <StatusBar barStyle="light-content" />
+        <RootNavigator />
+      </NavigationContainer>
     </AuthProvider>
   );
 }
