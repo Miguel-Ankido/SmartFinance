@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
 import java.security.MessageDigest
@@ -22,7 +23,7 @@ data class BankDefinition(
 )
 
 class AppDatabaseHelper(context: Context) :
-    SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
+    SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION) {
 
     companion object {
         private const val DATABASE_NAME = "syncpay_local.db"
@@ -42,6 +43,15 @@ class AppDatabaseHelper(context: Context) :
             BankDefinition("picpay", "PicPay", "com.picpay", "#11C76F"),
             BankDefinition("inter", "Banco Inter", "br.com.intermedium", "#FF7A00"),
         )
+
+        @Volatile
+        private var instance: AppDatabaseHelper? = null
+
+        fun getInstance(context: Context): AppDatabaseHelper {
+            return instance ?: synchronized(this) {
+                instance ?: AppDatabaseHelper(context.applicationContext).also { instance = it }
+            }
+        }
 
         private fun currentIsoTimestamp(): String {
             val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
@@ -176,7 +186,7 @@ class AppDatabaseHelper(context: Context) :
             put("category_id", category)
             put("amount", amount)
             put("type", type)
-            put("payment_method", "CASH")
+            put("payment_method", "PIX")
             put("merchant", title)
             put("description", formatDescription(bankName, note))
             put("date", formatIsoDate(Date(timestamp.coerceAtLeast(0))))
@@ -239,6 +249,64 @@ class AppDatabaseHelper(context: Context) :
         bankName = bankName,
         isBusiness = isBusiness,
     )
+
+    fun markTransactionsSynced(ids: ReadableArray, userId: String?): Boolean {
+        val targetUserId = userId ?: getActiveUserId() ?: return false
+        val now = currentIsoTimestamp()
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (i in 0 until ids.size()) {
+                val txId = ids.getString(i) ?: continue
+                val values = ContentValues().apply {
+                    put("synced_at", now)
+                }
+                db.update(
+                    TABLE_TRANSACTIONS,
+                    values,
+                    "id = ? AND user_id = ?",
+                    arrayOf(txId, targetUserId),
+                )
+            }
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun getDatabaseHealth(userId: String?): WritableMap {
+        val targetUserId = userId ?: getActiveUserId()
+        var pendingCount = 0
+        var isHealthy = true
+
+        try {
+            val cursor = if (targetUserId != null) {
+                readableDatabase.rawQuery(
+                    "SELECT COUNT(*) FROM $TABLE_TRANSACTIONS WHERE user_id = ? AND synced_at IS NULL AND is_deleted = 0",
+                    arrayOf(targetUserId),
+                )
+            } else {
+                readableDatabase.rawQuery(
+                    "SELECT COUNT(*) FROM $TABLE_TRANSACTIONS WHERE synced_at IS NULL AND is_deleted = 0",
+                    null,
+                )
+            }
+            cursor.use {
+                if (it.moveToFirst()) {
+                    pendingCount = it.getInt(0)
+                }
+            }
+        } catch (_: Exception) {
+            isHealthy = false
+        }
+
+        return Arguments.createMap().apply {
+            putBoolean("sqliteHealthy", isHealthy)
+            putInt("pendingSyncTransactions", pendingCount)
+            putString("checkedAt", currentIsoTimestamp())
+        }
+    }
 
     fun getTransactionsForUser(userId: String?): WritableArray {
         val transactions = Arguments.createArray()
@@ -388,14 +456,14 @@ class AppDatabaseHelper(context: Context) :
     }
 
     fun isPackageMonitored(userId: String?, packageName: String): Boolean {
-        val targetUserId = userId ?: getActiveUserId() ?: return false
+        val targetUserId = userId ?: getActiveUserId() ?: return true
         seedMonitoredBanks(targetUserId)
         val cursor = readableDatabase.rawQuery(
             "SELECT is_enabled FROM $TABLE_MONITORED_BANKS WHERE user_id = ? AND package_name = ?",
             arrayOf(targetUserId, packageName),
         )
         cursor.use {
-            return it.moveToFirst() && it.getInt(0) == 1
+            return if (it.moveToFirst()) it.getInt(0) == 1 else true
         }
     }
 

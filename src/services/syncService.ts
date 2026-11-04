@@ -1,5 +1,36 @@
-import { getSupabaseClient } from './supabase';
+import { getSupabaseClient, isSupabaseConfigured } from './supabase';
 import type { Transaction } from '../types/database';
+
+const BANK_PREFIX = '[bank=';
+
+export function encodeBankDescription(bankName: string, note?: string): string {
+  const cleanBank = (bankName || 'Manual').trim();
+  const cleanNote = (note || '').trim();
+  if (!cleanBank) {
+    return cleanNote;
+  }
+  return cleanNote ? `${BANK_PREFIX}${cleanBank}]\n${cleanNote}` : `${BANK_PREFIX}${cleanBank}]`;
+}
+
+export function decodeBankDescription(description?: string): { bankName: string; note?: string } {
+  if (!description) {
+    return { bankName: 'Manual', note: undefined };
+  }
+  if (!description.startsWith(BANK_PREFIX)) {
+    return { bankName: 'Manual', note: description || undefined };
+  }
+  const endIdx = description.indexOf(']');
+  if (endIdx <= BANK_PREFIX.length) {
+    return { bankName: 'Manual', note: description };
+  }
+  const bankName = description.substring(BANK_PREFIX.length, endIdx);
+  const newlineIdx = description.indexOf('\n', endIdx);
+  const note = newlineIdx >= 0 ? description.substring(newlineIdx + 1).trim() : '';
+  return {
+    bankName: bankName || 'Manual',
+    note: note || undefined,
+  };
+}
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
@@ -55,7 +86,7 @@ function toTransaction(value: unknown): Transaction | null {
 
 export const syncService = {
   async pushTransactions(localTransactions: Transaction[], userId: string): Promise<string[]> {
-    if (!userId || userId === 'default_user') {
+    if (!isSupabaseConfigured || !userId || userId === 'default_user') {
       return [];
     }
 
@@ -97,7 +128,7 @@ export const syncService = {
   },
 
   async pullTransactions(userId: string, lastSyncTimestamp?: string): Promise<Transaction[]> {
-    if (!userId || userId === 'default_user') {
+    if (!isSupabaseConfigured || !userId || userId === 'default_user') {
       return [];
     }
 
@@ -107,8 +138,11 @@ export const syncService = {
     }
 
     const { data, error } = await query;
-    if (error) {
-      throw error;
+    if (error || !Array.isArray(data)) {
+      if (error) {
+        throw error;
+      }
+      return [];
     }
 
     return (data as unknown[])
@@ -117,7 +151,7 @@ export const syncService = {
   },
 
   subscribeToChanges(userId: string, onRemoteChange: () => void): () => void {
-    if (!userId || userId === 'default_user') {
+    if (!isSupabaseConfigured || !userId || userId === 'default_user') {
       return () => undefined;
     }
 

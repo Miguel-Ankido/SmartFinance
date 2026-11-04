@@ -27,8 +27,8 @@ function normalizeRole(role: unknown): UserRole {
 }
 
 async function fetchProfileRole(authUser: SupabaseAuthUser): Promise<UserRole> {
-  // Se for o e-mail de desenvolvimento, garante permissão de admin imediatamente
-  if (authUser.email === 'miguel.dev@test.com') {
+  // Apenas em modo de desenvolvimento permite o fallback de admin por e-mail de teste
+  if (__DEV__ && authUser.email === 'miguel.dev@test.com') {
     return 'admin';
   }
 
@@ -54,7 +54,7 @@ async function fetchProfileRole(authUser: SupabaseAuthUser): Promise<UserRole> {
 }
 
 async function toAppUser(authUser: SupabaseAuthUser): Promise<User> {
-const profileRole = await fetchProfileRole(authUser);
+  const profileRole = await fetchProfileRole(authUser);
   const metadataName = authUser.user_metadata?.display_name ?? authUser.user_metadata?.name;
   const name =
     typeof metadataName === 'string' && metadataName.trim().length > 0
@@ -215,7 +215,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (NotificationModule?.logoutUser) {
         await NotificationModule.logoutUser();
       }
-      
     } catch (error) {
       console.error('Unable to logout:', error);
     } finally {

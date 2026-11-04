@@ -1,7 +1,7 @@
 import { parseNotification } from '../src/services/parser';
 
 describe('parseNotification', () => {
-  it('parses an approved Nubank purchase', () => {
+  it('parses an approved Nubank purchase and infers category', () => {
     expect(
       parseNotification(
         'com.nu.production',
@@ -14,6 +14,7 @@ describe('parseNotification', () => {
       paymentMethod: 'CREDIT',
       merchant: 'Supermercado',
       bankName: 'Nubank',
+      category: 'food',
     });
   });
 
@@ -30,6 +31,7 @@ describe('parseNotification', () => {
       paymentMethod: 'PIX',
       merchant: 'Padaria Central',
       bankName: 'PicPay',
+      category: 'food',
     });
   });
 
@@ -46,6 +48,24 @@ describe('parseNotification', () => {
       paymentMethod: 'PIX',
       merchant: 'Carlos',
       bankName: 'Banco Inter',
+      category: 'others',
+    });
+  });
+
+  it('parses an incoming Banco Inter Pix transfer', () => {
+    expect(
+      parseNotification(
+        'br.com.intermedium',
+        'Banco Inter',
+        'Você recebeu um Pix no valor de R$ 150,00 de Ana Silva',
+      ),
+    ).toMatchObject({
+      amount: 150,
+      type: 'INCOME',
+      paymentMethod: 'PIX',
+      merchant: 'Ana Silva',
+      bankName: 'Banco Inter',
+      category: 'salary',
     });
   });
 

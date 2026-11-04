@@ -23,7 +23,7 @@ class NotificationService : NotificationListenerService() {
         )
     }
 
-   override fun onNotificationPosted(sbn: StatusBarNotification?) {
+    override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn == null) return
 
         var packageName = sbn.packageName ?: return
@@ -38,21 +38,30 @@ class NotificationService : NotificationListenerService() {
             return
         }
 
+        // 2. Respeita a preferência do utilizador nos Bancos Monitorados (SQLite)
+        try {
+            val db = AppDatabaseHelper.getInstance(applicationContext)
+            if (!db.isPackageMonitored(null, packageName)) {
+                return
+            }
+        } catch (_: Exception) {
+            // Segue fluxo padrão caso o banco ainda não esteja inicializado
+        }
+
         val extras = sbn.notification?.extras ?: return
         val rawTitle = extras.getString("android.title") ?: ""
-        // Pega o texto longo (bigText) ou o texto normal
         val rawText = extras.getCharSequence("android.bigText")?.toString()
             ?: extras.getCharSequence("android.text")?.toString()
             ?: ""
 
         val combinedContent = "$rawTitle $rawText".lowercase()
 
-        // 2. Blacklist de segurança (2FA, códigos, senhas)
+        // 3. Blacklist de segurança (2FA, códigos, senhas)
         if (SECURITY_BLACKLIST.any { combinedContent.contains(it) }) {
             return
         }
 
-        // 3. Despacha para o JavaScript
+        // 4. Despacha para o JavaScript
         NotificationModule.sendEventToJS(packageName, rawTitle, rawText, sbn.postTime)
     }
 }

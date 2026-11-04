@@ -1,7 +1,7 @@
 import { createCapturedBankTransaction } from '../src/services/notificationListener';
 
 describe('createCapturedBankTransaction', () => {
-  it('returns only the sanitized transaction fields', () => {
+  it('returns only the sanitized transaction fields with inferred category', () => {
     const transaction = createCapturedBankTransaction('user-123', {
       packageName: 'com.nu.production',
       title: 'Nubank',
@@ -12,6 +12,8 @@ describe('createCapturedBankTransaction', () => {
     expect(transaction).toEqual(
       expect.objectContaining({
         user_id: 'user-123',
+        category_id: 'food',
+        category: 'food',
         amount: 45.9,
         type: 'EXPENSE',
         payment_method: 'CREDIT',

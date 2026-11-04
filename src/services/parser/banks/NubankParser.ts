@@ -8,40 +8,55 @@ export class NubankParser implements BankParser {
     const raw = `${title} ${text}`.trim();
 
     const cardMatch = raw.match(
-      /compra de r\$\s*([\d.,]+)\s+no\s+(.+?)\s*(?:aprovada|processada)\b/i,
+      /compra(?:\s+no\s+(d[eé]bito|cr[eé]dito))?\s+de\s+r\$\s*([\d.,]+)\s+(?:no|em)\s+(.+?)\s*(?:aprovada|processada)\b/i,
     );
     if (cardMatch) {
+      const amount = this.parseAmount(cardMatch[2]);
+      if (amount <= 0) {
+        return null;
+      }
+      const mode = (cardMatch[1] || '').toLowerCase();
+      const paymentMethod = mode.startsWith('d') ? 'DEBIT' : 'CREDIT';
+
       return {
-        amount: this.parseAmount(cardMatch[1]),
+        amount,
         type: 'EXPENSE',
-        paymentMethod: 'CREDIT',
-        merchant: cardMatch[2].trim(),
+        paymentMethod,
+        merchant: cardMatch[3].trim(),
         bankName: this.bankName,
       };
     }
 
     const pixSentMatch = raw.match(
-      /(?:transfer(?:\u00eancia|encia)|pix) de r\$\s*([\d.,]+)\s+enviad[oa]\s+para\s+(.+)/i,
+      /(?:transfer(?:ência|encia)|pix)\s+de\s+r\$\s*([\d.,]+)\s+enviad[oa]\s+para\s+(.+)/i,
     );
     if (pixSentMatch) {
+      const amount = this.parseAmount(pixSentMatch[1]);
+      if (amount <= 0) {
+        return null;
+      }
       return {
-        amount: this.parseAmount(pixSentMatch[1]),
+        amount,
         type: 'EXPENSE',
         paymentMethod: 'PIX',
-        merchant: pixSentMatch[2].trim(),
+        merchant: pixSentMatch[2].replace(/\.$/, '').trim(),
         bankName: this.bankName,
       };
     }
 
     const pixReceivedMatch = raw.match(
-      /(?:voc(?:\u00ea|e)\s+)?recebeu\s+(?:uma transfer(?:\u00eancia|encia)|um pix)\s+de r\$\s*([\d.,]+)\s+de\s+(.+)/i,
+      /(?:voc(?:ê|e)\s+)?recebeu\s+(?:uma transfer(?:ência|encia)|um pix)\s+de\s+r\$\s*([\d.,]+)\s+de\s+(.+)/i,
     );
     if (pixReceivedMatch) {
+      const amount = this.parseAmount(pixReceivedMatch[1]);
+      if (amount <= 0) {
+        return null;
+      }
       return {
-        amount: this.parseAmount(pixReceivedMatch[1]),
+        amount,
         type: 'INCOME',
         paymentMethod: 'PIX',
-        merchant: pixReceivedMatch[2].trim(),
+        merchant: pixReceivedMatch[2].replace(/\.$/, '').trim(),
         bankName: this.bankName,
       };
     }
@@ -53,6 +68,6 @@ export class NubankParser implements BankParser {
     const normalized = value.replace(/\./g, '').replace(',', '.');
     const amount = Number.parseFloat(normalized);
 
-    return Number.isFinite(amount) ? amount : 0;
+    return Number.isFinite(amount) && amount > 0 ? amount : 0;
   }
 }

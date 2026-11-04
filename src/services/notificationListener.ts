@@ -1,5 +1,6 @@
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import type { Transaction } from '../types/database';
+import type { CategoryId } from '../types/finance';
 import { parseNotification } from './parser';
 
 const { NotificationModule } = NativeModules;
@@ -20,9 +21,10 @@ export interface NativeNotificationPayload {
 
 export interface CapturedBankTransaction extends Transaction {
   bankName: string;
+  category?: CategoryId;
 }
 
-function generateUuid(): string {
+export function generateUuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
     const random = Math.floor(Math.random() * 16);
     const value = character === 'x' ? random : (random % 4) + 8;
@@ -71,9 +73,13 @@ export function createCapturedBankTransaction(
   }
 
   const { date, updatedAt } = toIsoDate(payload.postTime);
+  const resolvedCategory: CategoryId =
+    parsed.category ?? (parsed.type === 'INCOME' ? 'salary' : 'others');
+
   return {
     id: generateUuid(),
     user_id: userId,
+    category_id: resolvedCategory,
     amount: parsed.amount,
     type: parsed.type,
     payment_method: parsed.paymentMethod,
@@ -85,6 +91,7 @@ export function createCapturedBankTransaction(
     updated_at: updatedAt,
     is_deleted: false,
     bankName: parsed.bankName,
+    category: resolvedCategory,
   };
 }
 

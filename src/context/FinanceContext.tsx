@@ -13,9 +13,10 @@ import {
 import { Transaction as DbTransaction } from '../types/database';
 import { Colors } from '../theme/colors';
 import { useAuth } from './AuthContext';
-import { syncService } from '../services/syncService';
+import { syncService, encodeBankDescription, decodeBankDescription } from '../services/syncService';
 import {
   subscribeToBankNotifications,
+  generateUuid,
   type CapturedBankTransaction,
 } from '../services/notificationListener';
 
@@ -53,6 +54,23 @@ interface FinanceContextData {
   updateTransaction: (updatedTx: Transaction) => Promise<void>;
 }
 
+const VALID_CATEGORIES: CategoryId[] = [
+  'food',
+  'transport',
+  'entertainment',
+  'bills',
+  'shopping',
+  'salary',
+  'others',
+];
+
+function normalizeCategoryId(value: string | undefined, type: TransactionType): CategoryId {
+  if (value && VALID_CATEGORIES.includes(value as CategoryId)) {
+    return value as CategoryId;
+  }
+  return type === 'INCOME' ? 'salary' : 'others';
+}
+
 const initialCategories: CategoryData[] = [
   { id: 'food', name: 'Alimentação', color: Colors.catFood, budgetLimit: 800, spent: 0 },
   { id: 'transport', name: 'Transporte', color: Colors.catTransport, budgetLimit: 300, spent: 0 },
@@ -63,10 +81,23 @@ const initialCategories: CategoryData[] = [
   { id: 'others', name: 'Outros', color: Colors.textSecondary, budgetLimit: 400, spent: 0 },
 ];
 
-const recalculateCategoryExpenses = (txList: Transaction[], currentCategories: CategoryData[]): CategoryData[] => {
+const recalculateCategoryExpenses = (
+  txList: Transaction[],
+  currentCategories: CategoryData[],
+): CategoryData[] => {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
   return currentCategories.map(cat => {
     const totalSpentInCat = txList
-      .filter(t => t.category === cat.id && t.type === 'EXPENSE')
+      .filter(t => {
+        if (t.category !== cat.id || t.type !== 'EXPENSE') {
+          return false;
+        }
+        const txDate = new Date(t.timestamp);
+        return txDate.getFullYear() === currentYear && txDate.getMonth() === currentMonth;
+      })
       .reduce((acc, curr) => acc + curr.amount, 0);
     return { ...cat, spent: totalSpentInCat };
   });
@@ -83,9 +114,34 @@ const toFinanceTransaction = (transaction: CapturedBankTransaction): Transaction
     title: transaction.merchant || 'Transação Automática',
     amount: transaction.amount,
     type: transaction.type,
-    category: transaction.type === 'INCOME' ? 'salary' : 'others',
+    category: normalizeCategoryId(transaction.category ?? transaction.category_id, transaction.type),
     bankName: transaction.bankName,
     note: transaction.description,
+    timestamp,
+    timeFormatted: occurredAt.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    dateFormatted: occurredAt.toLocaleDateString('pt-BR'),
+    dateGroup: 'TODAY',
+  };
+};
+
+const fromRemoteDbTransaction = (dbTx: DbTransaction): Transaction => {
+  const parsedTimestamp = new Date(dbTx.date).getTime();
+  const timestamp = Number.isNaN(parsedTimestamp) ? Date.now() : parsedTimestamp;
+  const occurredAt = new Date(timestamp);
+  const { bankName, note } = decodeBankDescription(dbTx.description);
+
+  return {
+    id: dbTx.id,
+    userId: dbTx.user_id,
+    title: dbTx.merchant || 'Transação',
+    amount: dbTx.amount,
+    type: dbTx.type,
+    category: normalizeCategoryId(dbTx.category_id, dbTx.type),
+    bankName,
+    note,
     timestamp,
     timeFormatted: occurredAt.toLocaleTimeString('pt-BR', {
       hour: '2-digit',
@@ -107,7 +163,7 @@ const mapToDbTransaction = (tx: Transaction, userId: string, isDeleted = false):
     type: tx.type,
     payment_method: 'PIX',
     merchant: tx.title || 'Transação',
-    description: tx.note || tx.bankName || '',
+    description: encodeBankDescription(tx.bankName, tx.note),
     date: isoDate,
     is_business: false,
     synced_at: null,
@@ -132,12 +188,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return;
       }
       try {
-        await syncService.pushTransactions(dbTxList, currentUserId);
+        const syncedIds = await syncService.pushTransactions(dbTxList, currentUserId);
+        if (syncedIds.length > 0 && NotificationModule?.markTransactionsSynced) {
+          await NotificationModule.markTransactionsSynced(syncedIds, currentUserId);
+        }
       } catch (err) {
         console.log('[SyncEngine] Transação salva localmente (subirá quando online):', err);
       }
     },
-    [currentUserId]
+    [currentUserId],
   );
 
   const checkPermission = useCallback(async () => {
@@ -159,37 +218,63 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!currentUserId) return;
 
     try {
+      let localList: Transaction[] = [];
+      let storedBudgets: Record<string, number> = {};
+
       if (NotificationModule?.getStoredTransactions) {
         const stored: Transaction[] = await NotificationModule.getStoredTransactions(currentUserId);
-        let storedBudgets: Record<string, number> = {};
-
-        if (NotificationModule?.getStoredBudgets) {
-          try {
-            storedBudgets = await NotificationModule.getStoredBudgets(currentUserId);
-          } catch (budgetError) {
-            console.log('Sem budgets salvos ainda:', budgetError);
-          }
-        }
-
         if (stored && Array.isArray(stored)) {
-          setTransactions(stored);
-
-          setCategories(prevCats =>
-            prevCats.map(cat => {
-              const totalSpentInCat = stored
-                .filter(t => t.category === cat.id && t.type === 'EXPENSE')
-                .reduce((acc, curr) => acc + curr.amount, 0);
-
-              const definedLimit =
-                storedBudgets && storedBudgets[cat.id] !== undefined
-                  ? storedBudgets[cat.id]
-                  : cat.budgetLimit;
-
-              return { ...cat, spent: totalSpentInCat, budgetLimit: definedLimit };
-            })
-          );
+          localList = stored;
         }
       }
+
+      if (NotificationModule?.getStoredBudgets) {
+        try {
+          storedBudgets = await NotificationModule.getStoredBudgets(currentUserId);
+        } catch (budgetError) {
+          console.log('Sem budgets salvos ainda:', budgetError);
+        }
+      }
+
+      // Sincroniza registros remotos do Supabase (pull)
+      try {
+        const remoteDbList = await syncService.pullTransactions(currentUserId);
+        if (remoteDbList.length > 0) {
+          const byId = new Map<string, Transaction>();
+          localList.forEach(item => byId.set(item.id, item));
+
+          for (const remoteItem of remoteDbList) {
+            if (remoteItem.is_deleted) {
+              byId.delete(remoteItem.id);
+              await NotificationModule?.deleteTransaction?.(remoteItem.id, currentUserId);
+            } else if (!byId.has(remoteItem.id)) {
+              const converted = fromRemoteDbTransaction(remoteItem);
+              byId.set(converted.id, converted);
+              await NotificationModule?.saveManualTransaction?.({
+                ...converted,
+                userId: currentUserId,
+              });
+              await NotificationModule?.markTransactionsSynced?.([converted.id], currentUserId);
+            }
+          }
+
+          localList = Array.from(byId.values()).sort((a, b) => b.timestamp - a.timestamp);
+        }
+      } catch {
+        // Modo offline: mantém os dados do SQLite local
+      }
+
+      setTransactions(localList);
+      setCategories(prevCats => {
+        const withBudgets = prevCats.map(cat => ({
+          ...cat,
+          budgetLimit:
+            storedBudgets && storedBudgets[cat.id] !== undefined
+              ? storedBudgets[cat.id]
+              : cat.budgetLimit,
+        }));
+        return recalculateCategoryExpenses(localList, withBudgets);
+      });
     } catch (e) {
       console.error('Erro ao ler SQLite nativo:', e);
     }
@@ -227,7 +312,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     (data: NewTransactionInput) => {
       const now = Date.now();
       const newTx: Transaction = {
-        id: `manual_${now}_${Math.random().toString(36).substring(2, 7)}`,
+        id: generateUuid(),
         userId: currentUserId,
         title: data.title.trim() || (data.type === 'EXPENSE' ? 'Despesa Manual' : 'Receita Manual'),
         amount: data.amount,
@@ -237,7 +322,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         note: data.note,
         timestamp: now,
         timeFormatted: new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        dateFormatted: 'Hoje',
+        dateFormatted: new Date(now).toLocaleDateString('pt-BR'),
         dateGroup: 'TODAY',
       };
 
@@ -253,7 +338,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return updated;
       });
     },
-    [currentUserId, pushToCloud]
+    [currentUserId, pushToCloud],
   );
 
   const updateCategoryBudget = useCallback(
@@ -265,10 +350,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       setCategories(prev =>
-        prev.map(cat => (cat.id === categoryId ? { ...cat, budgetLimit: newLimit } : cat))
+        prev.map(cat => (cat.id === categoryId ? { ...cat, budgetLimit: newLimit } : cat)),
       );
     },
-    [currentUserId]
+    [currentUserId],
   );
 
   const deleteTransaction = useCallback(
@@ -294,7 +379,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return updated;
       });
     },
-    [currentUserId, transactions, pushToCloud]
+    [currentUserId, transactions, pushToCloud],
   );
 
   const updateTransaction = useCallback(
@@ -317,7 +402,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return updated;
       });
     },
-    [currentUserId, pushToCloud]
+    [currentUserId, pushToCloud],
   );
 
   useEffect(() => {
@@ -327,6 +412,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     return subscribeToBankNotifications(currentUserId, capturedTransaction => {
       const newTx = toFinanceTransaction(capturedTransaction);
+
+      // Salva também no SQLite local para persistir após fechar/minimizar o aplicativo
+      NotificationModule?.saveManualTransaction?.({
+        ...newTx,
+        userId: currentUserId,
+      });
 
       pushToCloud([mapToDbTransaction(newTx, currentUserId)]);
 

@@ -1,4 +1,5 @@
 import type { PaymentMethod, TransactionType } from '../../types/database';
+import type { CategoryId } from '../../types/finance';
 
 export interface ParsedTransaction {
   amount: number;
@@ -6,6 +7,7 @@ export interface ParsedTransaction {
   paymentMethod: PaymentMethod;
   merchant: string;
   bankName: string;
+  category?: CategoryId;
 }
 
 export interface BankParser {

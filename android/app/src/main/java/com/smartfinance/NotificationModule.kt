@@ -14,6 +14,7 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 class NotificationModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -69,7 +70,7 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun getStoredTransactions(userId: String?, promise: Promise) {
         try {
-            val db = AppDatabaseHelper(reactContext)
+            val db = AppDatabaseHelper.getInstance(reactContext)
             val transactions = db.getTransactionsForUser(userId)
             promise.resolve(transactions)
         } catch (e: Exception) {
@@ -80,15 +81,15 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun saveManualTransaction(txMap: ReadableMap, promise: Promise) {
         try {
-            val db = AppDatabaseHelper(reactContext)
-            val timestamp = txMap.getDouble("timestamp").toLong()
+            val db = AppDatabaseHelper.getInstance(reactContext)
+            val timestamp = if (txMap.hasKey("timestamp")) txMap.getDouble("timestamp").toLong() else System.currentTimeMillis()
             val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
             val dateFormat = SimpleDateFormat("dd 'de' MMMM 'de' yyyy", Locale.getDefault())
             val dateObj = Date(timestamp)
             val userId = if (txMap.hasKey("userId")) txMap.getString("userId") else null
 
             val success = db.insertTransaction(
-                id = txMap.getString("id") ?: "$timestamp",
+                id = txMap.getString("id") ?: UUID.randomUUID().toString(),
                 userId = userId,
                 title = txMap.getString("title") ?: "Lançamento",
                 amount = txMap.getDouble("amount"),
@@ -107,9 +108,30 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun markTransactionsSynced(ids: ReadableArray, userId: String?, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper.getInstance(reactContext)
+            val success = db.markTransactionsSynced(ids, userId)
+            promise.resolve(success)
+        } catch (e: Exception) {
+            promise.reject("DB_SYNC_MARK_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun getDatabaseHealth(userId: String?, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper.getInstance(reactContext)
+            promise.resolve(db.getDatabaseHealth(userId))
+        } catch (e: Exception) {
+            promise.reject("DB_HEALTH_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
     fun deleteTransaction(id: String, userId: String?, promise: Promise) {
         try {
-            val db = AppDatabaseHelper(reactContext)
+            val db = AppDatabaseHelper.getInstance(reactContext)
             val success = db.deleteTransaction(id, userId)
             promise.resolve(success)
         } catch (e: Exception) {
@@ -120,7 +142,7 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun getStoredBudgets(userId: String?, promise: Promise) {
         try {
-            val db = AppDatabaseHelper(reactContext)
+            val db = AppDatabaseHelper.getInstance(reactContext)
             val budgets = db.getBudgetsForUser(userId)
             promise.resolve(budgets)
         } catch (e: Exception) {
@@ -131,7 +153,7 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun saveCategoryBudget(categoryId: String, limitAmount: Double, userId: String?, promise: Promise) {
         try {
-            val db = AppDatabaseHelper(reactContext)
+            val db = AppDatabaseHelper.getInstance(reactContext)
             val success = db.saveBudget(userId, categoryId, limitAmount)
             promise.resolve(success)
         } catch (e: Exception) {
@@ -143,7 +165,7 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun getMonitoredBanks(userId: String?, promise: Promise) {
         try {
-            val db = AppDatabaseHelper(reactContext)
+            val db = AppDatabaseHelper.getInstance(reactContext)
             val banks = db.getMonitoredBanks(userId)
             promise.resolve(banks)
         } catch (e: Exception) {
@@ -154,7 +176,7 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun setBankEnabled(bankId: String, isEnabled: Boolean, userId: String?, promise: Promise) {
         try {
-            val db = AppDatabaseHelper(reactContext)
+            val db = AppDatabaseHelper.getInstance(reactContext)
             val success = db.setBankEnabled(userId, bankId, isEnabled)
             promise.resolve(success)
         } catch (e: Exception) {
@@ -203,8 +225,8 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun registerUser(name: String, email: String, password: String, promise: Promise) {
         try {
-            val db = AppDatabaseHelper(reactContext)
-            val id = "usr_${System.currentTimeMillis()}_${(1000..9999).random()}"
+            val db = AppDatabaseHelper.getInstance(reactContext)
+            val id = UUID.randomUUID().toString()
             val success = db.registerUser(id, name, email, password)
             if (success) {
                 val user = db.getActiveUser()
@@ -220,7 +242,7 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun loginUser(email: String, password: String, promise: Promise) {
         try {
-            val db = AppDatabaseHelper(reactContext)
+            val db = AppDatabaseHelper.getInstance(reactContext)
             val user = db.loginUser(email, password)
             if (user != null) {
                 promise.resolve(user)
@@ -235,7 +257,7 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun getActiveUser(promise: Promise) {
         try {
-            val db = AppDatabaseHelper(reactContext)
+            val db = AppDatabaseHelper.getInstance(reactContext)
             val user = db.getActiveUser()
             promise.resolve(user)
         } catch (e: Exception) {
@@ -246,7 +268,7 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun logoutUser(promise: Promise) {
         try {
-            val db = AppDatabaseHelper(reactContext)
+            val db = AppDatabaseHelper.getInstance(reactContext)
             db.clearSession()
             promise.resolve(true)
         } catch (e: Exception) {

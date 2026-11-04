@@ -8,27 +8,52 @@ export class PicPayParser implements BankParser {
     const raw = `${title} ${text}`.trim();
 
     const payMatch = raw.match(
-      /voc(?:\u00ea|e) pagou r\$\s*([\d.,]+)\s+para\s+(.+)/i,
+      /voc(?:ê|e)\s+pagou\s+r\$\s*([\d.,]+)\s+(?:para|em)\s+(.+)/i,
     );
     if (payMatch) {
+      const amount = this.parseAmount(payMatch[1]);
+      if (amount <= 0) {
+        return null;
+      }
       return {
-        amount: this.parseAmount(payMatch[1]),
+        amount,
         type: 'EXPENSE',
         paymentMethod: 'PIX',
-        merchant: payMatch[2].trim(),
+        merchant: payMatch[2].replace(/\.$/, '').trim(),
+        bankName: this.bankName,
+      };
+    }
+
+    const cardMatch = raw.match(
+      /compra\s+(?:aprovada\s+)?de\s+r\$\s*([\d.,]+)\s+em\s+(.+)/i,
+    );
+    if (cardMatch) {
+      const amount = this.parseAmount(cardMatch[1]);
+      if (amount <= 0) {
+        return null;
+      }
+      return {
+        amount,
+        type: 'EXPENSE',
+        paymentMethod: 'CREDIT',
+        merchant: cardMatch[2].replace(/\.$/, '').trim(),
         bankName: this.bankName,
       };
     }
 
     const receivedMatch = raw.match(
-      /recebeu um pix de r\$\s*([\d.,]+)\s+de\s+(.+)/i,
+      /recebeu\s+(?:um\s+pix|um\s+pagamento)\s+de\s+r\$\s*([\d.,]+)\s+de\s+(.+)/i,
     );
     if (receivedMatch) {
+      const amount = this.parseAmount(receivedMatch[1]);
+      if (amount <= 0) {
+        return null;
+      }
       return {
-        amount: this.parseAmount(receivedMatch[1]),
+        amount,
         type: 'INCOME',
         paymentMethod: 'PIX',
-        merchant: receivedMatch[2].trim(),
+        merchant: receivedMatch[2].replace(/\.$/, '').trim(),
         bankName: this.bankName,
       };
     }
@@ -40,6 +65,6 @@ export class PicPayParser implements BankParser {
     const normalized = value.replace(/\./g, '').replace(',', '.');
     const amount = Number.parseFloat(normalized);
 
-    return Number.isFinite(amount) ? amount : 0;
+    return Number.isFinite(amount) && amount > 0 ? amount : 0;
   }
 }

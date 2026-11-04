@@ -69,12 +69,23 @@ export const adminService = {
     try {
       const { data, error } = await getSupabaseClient().rpc('admin_system_overview');
       if (error) {
-        // Fallback seguro caso a RPC ainda não exista no Supabase
-        const { count: profileCount } = await getSupabaseClient().from('profiles').select('*', { count: 'exact', head: true });
-        const { count: txCount } = await getSupabaseClient().from('transactions').select('*', { count: 'exact', head: true });
+        const [profilesRes, txRes] = await Promise.all([
+          getSupabaseClient().from('profiles').select('*', { count: 'exact', head: true }),
+          getSupabaseClient().from('transactions').select('*', { count: 'exact', head: true }),
+        ]);
+
+        if (profilesRes.error && txRes.error) {
+          return {
+            totalUsers: 0,
+            totalCloudTransactions: 0,
+            supabaseOnline: false,
+            apiLatencyMs: null,
+          };
+        }
+
         return {
-          totalUsers: profileCount || 1,
-          totalCloudTransactions: txCount || 0,
+          totalUsers: profilesRes.count ?? 1,
+          totalCloudTransactions: txRes.count ?? 0,
           supabaseOnline: true,
           apiLatencyMs: Date.now() - startedAt,
         };
@@ -89,10 +100,10 @@ export const adminService = {
       };
     } catch {
       return {
-        totalUsers: 1,
+        totalUsers: 0,
         totalCloudTransactions: 0,
-        supabaseOnline: true,
-        apiLatencyMs: Date.now() - startedAt,
+        supabaseOnline: false,
+        apiLatencyMs: null,
       };
     }
   },
@@ -200,7 +211,7 @@ export const adminService = {
       const { error } = await getSupabaseClient().rpc('admin_ping');
       return { online: !error, latencyMs: error ? null : Date.now() - startedAt };
     } catch {
-      return { online: true, latencyMs: Date.now() - startedAt };
+      return { online: false, latencyMs: null };
     }
   },
 };
