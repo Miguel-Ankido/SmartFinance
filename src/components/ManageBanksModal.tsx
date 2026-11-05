@@ -7,15 +7,19 @@ import {
   TouchableOpacity,
   ScrollView,
   Switch,
+  NativeModules,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { MonitoredBank } from '../types/finance';
+import { useAuth } from '../context/AuthContext';
+import { ADB_SHELL_BANK } from '../services/bankMonitorService';
 
 interface ManageBanksModalProps {
   visible: boolean;
   banks: MonitoredBank[];
   onToggleBank: (bankId: string, enabled: boolean) => void;
   onToggleAll: (enableAll: boolean) => void;
+  onDone?: (activePackages: string[]) => void;
   onClose: () => void;
 }
 
@@ -24,9 +28,49 @@ export default function ManageBanksModal({
   banks,
   onToggleBank,
   onToggleAll,
+  onDone,
   onClose,
 }: ManageBanksModalProps) {
-  const activeCount = banks.filter(b => b.isEnabled).length;
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+
+  // Se o usuário for administrador, garante que o item ADB Shell seja exibido
+  // Se não for admin, impede estritamente a renderização do pacote com.android.shell
+  let displayedBanks: MonitoredBank[];
+  if (isAdmin) {
+    const hasShell = banks.some(b => b.packageName === ADB_SHELL_BANK.packageName);
+    if (!hasShell) {
+      displayedBanks = [...banks, { ...ADB_SHELL_BANK, isEnabled: true }];
+    } else {
+      displayedBanks = banks;
+    }
+  } else {
+    displayedBanks = banks.filter(b => b.packageName !== ADB_SHELL_BANK.packageName);
+  }
+
+  const activeCount = displayedBanks.filter(b => b.isEnabled).length;
+
+  const handleDone = async () => {
+    // 3. Sincronização: extrai apenas os pacotes dos bancos ativos
+    const activePackages = displayedBanks
+      .filter(b => b.isEnabled)
+      .map(b => b.packageName);
+
+    const notificationModule = NativeModules?.NotificationModule;
+    if (notificationModule?.updateMonitoredPackages) {
+      try {
+        await notificationModule.updateMonitoredPackages(activePackages);
+      } catch (e) {
+        console.error('Erro ao chamar updateMonitoredPackages no Android:', e);
+      }
+    }
+
+    if (onDone) {
+      onDone(activePackages);
+    } else {
+      onClose();
+    }
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -49,7 +93,7 @@ export default function ManageBanksModal({
           {/* Barra de Ações Rápidas */}
           <View style={styles.quickBar}>
             <Text style={styles.counterText}>
-              <Text style={styles.counterHighlight}>{activeCount}</Text> de {banks.length} ativos
+              <Text style={styles.counterHighlight}>{activeCount}</Text> de {displayedBanks.length} ativos
             </Text>
             <View style={styles.quickButtons}>
               <TouchableOpacity onPress={() => onToggleAll(true)} style={styles.quickBtn}>
@@ -63,26 +107,37 @@ export default function ManageBanksModal({
 
           {/* Lista de Bancos com Switch */}
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollList}>
-            {banks.map(bank => (
-              <View key={bank.id} style={styles.bankRow}>
-                <View style={styles.bankLeft}>
-                  <View style={[styles.bankColorDot, { backgroundColor: bank.color }]} />
-                  <View>
-                    <Text style={styles.bankName}>{bank.name}</Text>
-                    <Text style={styles.bankPackage}>{bank.packageName}</Text>
+            {displayedBanks.map(bank => {
+              const isShell = bank.packageName === ADB_SHELL_BANK.packageName;
+
+              return (
+                <View key={bank.id} style={[styles.bankRow, isShell && styles.adminBankRow]}>
+                  <View style={styles.bankLeft}>
+                    <View style={[styles.bankColorDot, { backgroundColor: bank.color }]} />
+                    <View>
+                      <View style={styles.bankNameRow}>
+                        <Text style={styles.bankName}>{bank.name}</Text>
+                        {isShell && (
+                          <View style={styles.adminBadge}>
+                            <Text style={styles.adminBadgeText}>ADMIN</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.bankPackage}>{bank.packageName}</Text>
+                    </View>
                   </View>
+
+                  <Switch
+                    value={bank.isEnabled}
+                    onValueChange={val => onToggleBank(bank.id, val)}
+                    trackColor={{ false: '#1c2830', true: Colors.primaryMuted }}
+                    thumbColor={bank.isEnabled ? Colors.primary : '#4b5b65'}
+                  />
                 </View>
+              );
+            })}
 
-                <Switch
-                  value={bank.isEnabled}
-                  onValueChange={val => onToggleBank(bank.id, val)}
-                  trackColor={{ false: '#1c2830', true: Colors.primaryMuted }}
-                  thumbColor={bank.isEnabled ? Colors.primary : '#4b5b65'}
-                />
-              </View>
-            ))}
-
-            <TouchableOpacity style={styles.doneBtn} activeOpacity={0.85} onPress={onClose}>
+            <TouchableOpacity style={styles.doneBtn} activeOpacity={0.85} onPress={handleDone}>
               <Text style={styles.doneBtnText}>CONCLUÍDO</Text>
             </TouchableOpacity>
           </ScrollView>
@@ -161,9 +216,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  adminBankRow: {
+    borderColor: 'rgba(76, 175, 80, 0.4)',
+    backgroundColor: 'rgba(76, 175, 80, 0.08)',
+  },
   bankLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   bankColorDot: { width: 12, height: 12, borderRadius: 6 },
+  bankNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   bankName: { color: Colors.textPrimary, fontSize: 14, fontWeight: '700' },
+  adminBadge: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  adminBadgeText: {
+    color: '#000000',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
   bankPackage: { color: Colors.textMuted, fontSize: 11, marginTop: 2 },
   doneBtn: {
     backgroundColor: Colors.primary,

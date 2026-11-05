@@ -58,6 +58,45 @@ export class PicPayParser implements BankParser {
       };
     }
 
+    const tePagouMatch = raw.match(
+      /(?:^|.*?\s+)?(.+?)\s+te\s+pagou\s+r\$\s*([\d.,]+)/i,
+    );
+    if (tePagouMatch) {
+      const amount = this.parseAmount(tePagouMatch[2]);
+      if (amount <= 0) {
+        return null;
+      }
+      const rawSender = tePagouMatch[1]
+        .replace(/^(?:picpay|alerta|notifica[çc][ãa]o)[\s:-]*/i, '')
+        .replace(/\.$/, '')
+        .trim();
+
+      return {
+        amount,
+        type: 'INCOME',
+        paymentMethod: 'PIX',
+        merchant: rawSender || 'Transferência PicPay',
+        bankName: this.bankName,
+      };
+    }
+
+    const directReceivedMatch = raw.match(
+      /voc(?:ê|e)\s+recebeu\s+r\$\s*([\d.,]+)\s+de\s+(.+)/i,
+    );
+    if (directReceivedMatch) {
+      const amount = this.parseAmount(directReceivedMatch[1]);
+      if (amount <= 0) {
+        return null;
+      }
+      return {
+        amount,
+        type: 'INCOME',
+        paymentMethod: 'PIX',
+        merchant: directReceivedMatch[2].replace(/\.$/, '').trim(),
+        bankName: this.bankName,
+      };
+    }
+
     return null;
   }
 

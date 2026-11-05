@@ -42,6 +42,9 @@ class AppDatabaseHelper(context: Context) :
             BankDefinition("nubank", "Nubank", "com.nu.production", "#820AD1"),
             BankDefinition("picpay", "PicPay", "com.picpay", "#11C76F"),
             BankDefinition("inter", "Banco Inter", "br.com.intermedium", "#FF7A00"),
+            BankDefinition("itau", "Itaú", "com.itau", "#EC7000"),
+            BankDefinition("bb", "Banco do Brasil", "br.com.bb.android", "#F8D117"),
+            BankDefinition("santander", "Santander", "br.com.santander.usuario", "#CC0000"),
         )
 
         @Volatile

@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
+import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
@@ -24,12 +25,23 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
         private var eventEmitterContext: ReactApplicationContext? = null
 
         fun sendEvent(eventName: String, params: WritableMap?) {
-            eventEmitterContext
-                ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                ?.emit(eventName, params)
+            val context = eventEmitterContext
+            if (context == null) {
+                Log.w(MODULE_NAME, "eventEmitterContext nulo ao tentar emitir evento: $eventName")
+                return
+            }
+            try {
+                context
+                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    ?.emit(eventName, params)
+                Log.i(MODULE_NAME, "Evento emitido com sucesso para o JS: $eventName")
+            } catch (e: Exception) {
+                Log.e(MODULE_NAME, "Falha ao emitir evento $eventName: ${e.message}", e)
+            }
         }
 
         fun sendEventToJS(packageName: String, title: String, text: String, postTime: Long) {
+            Log.d(MODULE_NAME, "sendEventToJS chamado: pkg=$packageName, title=$title, text=$text")
             val params = Arguments.createMap().apply {
                 putString("packageName", packageName)
                 putString("title", title)
@@ -162,6 +174,38 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
     }
 
     // --- MONITORED BANKS ---
+    @ReactMethod
+    fun updateMonitoredPackages(packages: ReadableArray, promise: Promise) {
+        try {
+            val newSet = mutableSetOf<String>()
+            for (i in 0 until packages.size()) {
+                val pkg = packages.getString(i)
+                if (!pkg.isNullOrBlank()) {
+                    newSet.add(pkg.trim())
+                }
+            }
+            NotificationService.activePackages = newSet
+            Log.i(MODULE_NAME, "updateMonitoredPackages atualizado. Total de pacotes ativos: ${newSet.size} -> $newSet")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(MODULE_NAME, "Erro ao atualizar pacotes monitorados: ${e.message}", e)
+            promise.reject("UPDATE_PACKAGES_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun getActiveMonitoredPackages(promise: Promise) {
+        try {
+            val array = Arguments.createArray()
+            NotificationService.activePackages.forEach {
+                array.pushString(it)
+            }
+            promise.resolve(array)
+        } catch (e: Exception) {
+            promise.reject("GET_PACKAGES_ERROR", e.message)
+        }
+    }
+
     @ReactMethod
     fun getMonitoredBanks(userId: String?, promise: Promise) {
         try {

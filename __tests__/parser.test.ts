@@ -35,6 +35,38 @@ describe('parseNotification', () => {
     });
   });
 
+  it('parses an incoming PicPay transfer (te pagou)', () => {
+    expect(
+      parseNotification(
+        'com.picpay',
+        'PicPay',
+        'Joao te pagou R$ 35,00',
+      ),
+    ).toMatchObject({
+      amount: 35,
+      type: 'INCOME',
+      paymentMethod: 'PIX',
+      merchant: 'Joao',
+      bankName: 'PicPay',
+    });
+  });
+
+  it('parses an incoming PicPay transfer sent via shell/emulator', () => {
+    expect(
+      parseNotification(
+        'com.android.shell',
+        'PicPay',
+        'Joao te pagou R$ 35,00',
+      ),
+    ).toMatchObject({
+      amount: 35,
+      type: 'INCOME',
+      paymentMethod: 'PIX',
+      merchant: 'Joao',
+      bankName: 'PicPay',
+    });
+  });
+
   it('parses a Banco Inter Pix transfer', () => {
     expect(
       parseNotification(

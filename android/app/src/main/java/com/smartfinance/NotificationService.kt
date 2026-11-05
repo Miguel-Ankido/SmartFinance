@@ -2,19 +2,28 @@ package com.smartfinance
 
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
 
 class NotificationService : NotificationListenerService() {
 
     companion object {
-        // Whitelist estrita de pacotes bancários suportados
-        private val ALLOWED_BANK_PACKAGES = setOf(
+        private const val TAG = "NotificationService"
+
+        // Lista de pacotes padrão autorizados para evitar perda de notificações
+        // enquanto o JavaScript do React Native inicializa
+        val DEFAULT_PACKAGES = setOf(
             "com.nu.production",       // Nubank
             "com.picpay",              // PicPay
             "br.com.intermedium",      // Banco Inter
             "com.itau",                // Itaú
             "br.com.bb.android",       // Banco do Brasil
-            "br.com.santander.usuario" // Santander
+            "br.com.santander.usuario",// Santander
+            "com.android.shell"        // Emulador ADB Shell (Debug/Admin)
         )
+
+        // Conjunto de pacotes autorizados dinamicamente pelo frontend
+        @Volatile
+        var activePackages: Set<String> = DEFAULT_PACKAGES
 
         // Blacklist de termos de segurança (2FA / Senhas / Tokens)
         private val SECURITY_BLACKLIST = listOf(
@@ -23,45 +32,65 @@ class NotificationService : NotificationListenerService() {
         )
     }
 
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        Log.i(TAG, "NotificationService conectado e ativo. Pacotes autorizados: $activePackages")
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn == null) return
 
-        var packageName = sbn.packageName ?: return
+        val originalPackageName = sbn.packageName ?: return
+        var packageName = originalPackageName
 
-        // MODO TESTE/DEBUG: Permite que o comando adb shell use a tag para simular o banco
-        if (BuildConfig.DEBUG && packageName == "com.android.shell" && sbn.tag != null) {
-            packageName = sbn.tag
+        val extras = sbn.notification?.extras
+        val rawTitle = extras?.getString("android.title") ?: ""
+        val rawText = extras?.getCharSequence("android.bigText")?.toString()
+            ?: extras?.getCharSequence("android.text")?.toString()
+            ?: ""
+
+        Log.d(TAG, "Notificação interceptada: pkg=$originalPackageName, tag=${sbn.tag}, title=$rawTitle, text=$rawText")
+
+        // MODO TESTE/DEBUG: Permite que comandos adb shell simulem alertas bancários
+        if (BuildConfig.DEBUG && packageName == "com.android.shell") {
+            val tagLower = sbn.tag?.lowercase() ?: ""
+            val titleLower = rawTitle.lowercase()
+            val textLower = rawText.lowercase()
+
+            packageName = when {
+                tagLower.contains("picpay") || titleLower.contains("picpay") || textLower.contains("picpay") -> "com.picpay"
+                tagLower.contains("nu") || titleLower.contains("nubank") || textLower.contains("nubank") -> "com.nu.production"
+                tagLower.contains("inter") || titleLower.contains("inter") || textLower.contains("inter") -> "br.com.intermedium"
+                tagLower.contains("itau") || titleLower.contains("itau") || titleLower.contains("itaú") -> "com.itau"
+                tagLower.contains("bb") || titleLower.contains("banco do brasil") -> "br.com.bb.android"
+                tagLower.contains("santander") || titleLower.contains("santander") -> "br.com.santander.usuario"
+                sbn.tag != null && sbn.tag.isNotBlank() -> sbn.tag
+                else -> originalPackageName
+            }
+            Log.d(TAG, "ADB Shell detectado. Pacote mapeado para: $packageName")
         }
 
-        // 1. Filtro estrito: Whitelist de pacotes bancários
-        if (!ALLOWED_BANK_PACKAGES.contains(packageName)) {
+        // 1. Filtro dinâmico: Verifica se o pacote está autorizado pelo frontend
+        val currentActive = activePackages
+        val isAllowed = currentActive.contains(packageName) ||
+                        currentActive.contains(originalPackageName) ||
+                        (originalPackageName == "com.android.shell" && currentActive.contains("com.android.shell"))
+
+        if (!isAllowed) {
+            Log.d(TAG, "Notificação descartada: pacote $packageName ($originalPackageName) não está em activePackages: $currentActive")
             return
         }
-
-        // 2. Respeita a preferência do utilizador nos Bancos Monitorados (SQLite)
-        try {
-            val db = AppDatabaseHelper.getInstance(applicationContext)
-            if (!db.isPackageMonitored(null, packageName)) {
-                return
-            }
-        } catch (_: Exception) {
-            // Segue fluxo padrão caso o banco ainda não esteja inicializado
-        }
-
-        val extras = sbn.notification?.extras ?: return
-        val rawTitle = extras.getString("android.title") ?: ""
-        val rawText = extras.getCharSequence("android.bigText")?.toString()
-            ?: extras.getCharSequence("android.text")?.toString()
-            ?: ""
 
         val combinedContent = "$rawTitle $rawText".lowercase()
 
-        // 3. Blacklist de segurança (2FA, códigos, senhas)
+        // 2. Blacklist de segurança (2FA, códigos, senhas)
         if (SECURITY_BLACKLIST.any { combinedContent.contains(it) }) {
+            Log.d(TAG, "Notificação descartada: conteúdo contém termo de segurança")
             return
         }
 
-        // 4. Despacha para o JavaScript
+        // 3. Despacha para o JavaScript
+        Log.i(TAG, "Despachando notificação para o JS: pkg=$packageName, title=$rawTitle, text=$rawText")
         NotificationModule.sendEventToJS(packageName, rawTitle, rawText, sbn.postTime)
     }
 }

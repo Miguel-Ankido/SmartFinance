@@ -93,7 +93,18 @@ export function parseNotification(
     return null;
   }
 
-  const parser = parsers[packageName];
+  let parser = parsers[packageName];
+  if (!parser) {
+    const hint = `${packageName} ${title}`.toLowerCase();
+    if (hint.includes('picpay')) {
+      parser = parsers['com.picpay'];
+    } else if (hint.includes('nu') || hint.includes('nubank')) {
+      parser = parsers['com.nu.production'];
+    } else if (hint.includes('inter')) {
+      parser = parsers['br.com.intermedium'];
+    }
+  }
+
   if (!parser) {
     return null;
   }

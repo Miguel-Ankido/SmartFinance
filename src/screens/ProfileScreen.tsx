@@ -8,12 +8,17 @@ import { MonitoredBank } from '../types/finance';
 import type { RootStackParamList } from '../types/navigation';
 import ManageBanksModal from '../components/ManageBanksModal';
 import ExportReportModal from '../components/ExportReportModal';
+import {
+  loadAndSyncMonitoredBanks,
+  saveAndSyncMonitoredBanks,
+} from '../services/bankMonitorService';
 
 const { NotificationModule } = NativeModules;
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const { user, logout } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { hasPermission, requestPermission, transactions } = useFinance();
   const [banks, setBanks] = useState<MonitoredBank[]>([]);
   const [isManageBanksOpen, setIsManageBanksOpen] = useState(false);
@@ -21,43 +26,39 @@ export default function ProfileScreen() {
 
   const loadMonitoredBanks = useCallback(async () => {
     try {
-      if (NotificationModule?.getMonitoredBanks) {
-        const list: MonitoredBank[] = await NotificationModule.getMonitoredBanks(user?.id);
-        if (list && Array.isArray(list)) {
-          setBanks(list);
-        }
-      }
+      const list = await loadAndSyncMonitoredBanks(isAdmin);
+      setBanks(list);
     } catch (e) {
       console.error('Erro ao ler bancos monitorados:', e);
     }
-  }, [user?.id]);
+  }, [isAdmin]);
 
   useEffect(() => {
     loadMonitoredBanks();
   }, [loadMonitoredBanks]);
 
-  const handleToggleBank = async (bankId: string, enabled: boolean) => {
+  const handleToggleBank = (bankId: string, enabled: boolean) => {
     setBanks(prev => prev.map(b => (b.id === bankId ? { ...b, isEnabled: enabled } : b)));
-    try {
-      if (NotificationModule?.setBankEnabled) {
-        await NotificationModule.setBankEnabled(bankId, enabled, user?.id);
-      }
-    } catch (e) {
-      console.error('Erro ao atualizar banco:', e);
-    }
   };
 
-  const handleToggleAll = async (enableAll: boolean) => {
+  const handleToggleAll = (enableAll: boolean) => {
     setBanks(prev => prev.map(b => ({ ...b, isEnabled: enableAll })));
+  };
+
+  const handleSaveBanks = async () => {
     try {
+      await saveAndSyncMonitoredBanks(banks);
       if (NotificationModule?.setBankEnabled) {
         for (const b of banks) {
-          await NotificationModule.setBankEnabled(b.id, enableAll, user?.id);
+          if (b.packageName !== 'com.android.shell') {
+            await NotificationModule.setBankEnabled(b.id, b.isEnabled, user?.id);
+          }
         }
       }
     } catch (e) {
-      console.error('Erro ao atualizar todos os bancos:', e);
+      console.error('Erro ao salvar preferências de bancos:', e);
     }
+    setIsManageBanksOpen(false);
   };
 
   const activeBanks = banks.filter(b => b.isEnabled);
@@ -194,7 +195,8 @@ export default function ProfileScreen() {
         banks={banks}
         onToggleBank={handleToggleBank}
         onToggleAll={handleToggleAll}
-        onClose={() => setIsManageBanksOpen(false)}
+        onDone={handleSaveBanks}
+        onClose={handleSaveBanks}
       />
 
       <ExportReportModal

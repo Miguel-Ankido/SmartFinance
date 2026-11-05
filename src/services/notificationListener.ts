@@ -100,11 +100,16 @@ export function subscribeToBankNotifications(
   onNewTransaction: (transaction: CapturedBankTransaction) => void,
 ): () => void {
   if (!notificationEmitter) {
+    console.warn('[NotificationListener] notificationEmitter é nulo');
     return () => undefined;
   }
 
+  console.log('[NotificationListener] Inscrito com sucesso para o usuário:', userId);
+
   const subscription = notificationEmitter.addListener(NOTIFICATION_EVENT, (payload: unknown) => {
+    console.log('[NotificationListener] Evento nativo recebido:', JSON.stringify(payload));
     const transaction = createCapturedBankTransaction(userId, payload);
+    console.log('[NotificationListener] Transação criada a partir do alerta:', JSON.stringify(transaction));
     if (transaction) {
       onNewTransaction(transaction);
     }

@@ -13,6 +13,7 @@ import {
 import { Transaction as DbTransaction } from '../types/database';
 import { Colors } from '../theme/colors';
 import { useAuth } from './AuthContext';
+import { loadAndSyncMonitoredBanks } from '../services/bankMonitorService';
 import { syncService, encodeBankDescription, decodeBankDescription } from '../services/syncService';
 import {
   subscribeToBankNotifications,
@@ -281,6 +282,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [currentUserId]);
 
   useEffect(() => {
+    loadAndSyncMonitoredBanks(user?.role === 'admin');
+  }, [user?.role]);
+
+  useEffect(() => {
     checkPermission();
     loadStoredData();
 
@@ -411,6 +416,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     return subscribeToBankNotifications(currentUserId, capturedTransaction => {
+      console.log('[FinanceContext] Nova transação capturada recebida:', JSON.stringify(capturedTransaction));
       const newTx = toFinanceTransaction(capturedTransaction);
 
       // Salva também no SQLite local para persistir após fechar/minimizar o aplicativo

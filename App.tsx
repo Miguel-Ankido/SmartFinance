@@ -19,6 +19,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { FinanceProvider } from './src/context/FinanceContext';
 import { Colors } from './src/theme/colors';
+import { loadAndSyncMonitoredBanks } from './src/services/bankMonitorService';
 
 import AuthScreen from './src/screens/AuthScreen';
 import HomeScreen from './src/screens/HomeScreen';
@@ -199,6 +200,10 @@ function RootNavigator() {
 }
 
 export default function App(): React.JSX.Element {
+  useEffect(() => {
+    loadAndSyncMonitoredBanks();
+  }, []);
+
   return (
     <AuthProvider>
       <NavigationContainer>
