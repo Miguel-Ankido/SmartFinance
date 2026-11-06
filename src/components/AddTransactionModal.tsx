@@ -32,13 +32,14 @@ const CATEGORY_OPTIONS: { id: CategoryId; label: string; color: string }[] = [
 ];
 
 export default function AddTransactionModal({ visible, onClose }: AddTransactionModalProps) {
-  const { addManualTransaction } = useFinance();
+  const { addManualTransaction, accounts } = useFinance();
 
   const [type, setType] = useState<TransactionType>('EXPENSE');
   const [title, setTitle] = useState('');
   const [amountRaw, setAmountRaw] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>('food');
   const [selectedBank, setSelectedBank] = useState<string>('Nubank');
+  const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(undefined);
   const [note, setNote] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -57,6 +58,7 @@ export default function AddTransactionModal({ visible, onClose }: AddTransaction
       type,
       category: selectedCategory,
       bankName: selectedBank,
+      accountId: selectedAccountId,
       note: note.trim() || undefined,
     });
 
@@ -64,6 +66,7 @@ export default function AddTransactionModal({ visible, onClose }: AddTransaction
     setTitle('');
     setAmountRaw('');
     setNote('');
+    setSelectedAccountId(undefined);
     onClose();
   };
 
@@ -131,6 +134,47 @@ export default function AddTransactionModal({ visible, onClose }: AddTransaction
               value={title}
               onChangeText={setTitle}
             />
+
+            {/* Seleção de Carteira / Conta (Épico 1) */}
+            {accounts.length > 0 ? (
+              <>
+                <Text style={styles.fieldLabel}>VINCULAR À CARTEIRA / CONTA</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalChips}>
+                  <TouchableOpacity
+                    style={[styles.accountChip, !selectedAccountId && styles.accountChipActive]}
+                    onPress={() => setSelectedAccountId(undefined)}>
+                    <Text style={[styles.accountChipText, !selectedAccountId && styles.accountChipTextActive]}>
+                      Padrão (Sem Carteira)
+                    </Text>
+                  </TouchableOpacity>
+                  {accounts.map(acc => {
+                    const isSelected = selectedAccountId === acc.id;
+                    return (
+                      <TouchableOpacity
+                        key={acc.id}
+                        style={[
+                          styles.accountChip,
+                          isSelected && styles.accountChipActive,
+                          isSelected && { borderColor: acc.color || Colors.primary },
+                        ]}
+                        onPress={() => {
+                          setSelectedAccountId(acc.id);
+                        }}>
+                        <View
+                          style={[
+                            styles.accountChipDot,
+                            { backgroundColor: acc.color || Colors.primary },
+                          ]}
+                        />
+                        <Text style={[styles.accountChipText, isSelected && styles.accountChipTextActive]}>
+                          {acc.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            ) : null}
 
             {/* Instituição / Banco */}
             <Text style={styles.fieldLabel}>BANCO OU MÉTODO</Text>
@@ -280,6 +324,36 @@ const styles = StyleSheet.create({
   bankChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   bankChipText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
   bankChipTextActive: { color: '#000000', fontWeight: '800' },
+  accountChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceCard,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 6,
+  },
+  accountChipActive: {
+    backgroundColor: Colors.surfaceHover,
+    borderColor: Colors.primary,
+  },
+  accountChipDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  accountChipText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  accountChipTextActive: {
+    color: Colors.textPrimary,
+    fontWeight: '700',
+  },
   categoriesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   categoryCard: {
     width: '31%',

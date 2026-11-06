@@ -100,6 +100,12 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
             val dateObj = Date(timestamp)
             val userId = if (txMap.hasKey("userId")) txMap.getString("userId") else null
 
+            val accountId = if (txMap.hasKey("accountId") && !txMap.isNull("accountId")) {
+                txMap.getString("accountId")
+            } else if (txMap.hasKey("account_id") && !txMap.isNull("account_id")) {
+                txMap.getString("account_id")
+            } else null
+
             val success = db.insertTransaction(
                 id = txMap.getString("id") ?: UUID.randomUUID().toString(),
                 userId = userId,
@@ -111,7 +117,8 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
                 note = if (txMap.hasKey("note")) txMap.getString("note") else "",
                 timestamp = timestamp,
                 timeFormatted = timeFormat.format(dateObj),
-                dateFormatted = dateFormat.format(dateObj)
+                dateFormatted = dateFormat.format(dateObj),
+                accountId = accountId
             )
             promise.resolve(success)
         } catch (e: Exception) {
@@ -170,6 +177,126 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
             promise.resolve(success)
         } catch (e: Exception) {
             promise.reject("BUDGET_WRITE_ERROR", e.message)
+        }
+    }
+
+    // --- ACCOUNTS (CARTEIRAS) ---
+    @ReactMethod
+    fun getStoredAccounts(userId: String?, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper.getInstance(reactContext)
+            val accounts = db.getAccountsForUser(userId)
+            promise.resolve(accounts)
+        } catch (e: Exception) {
+            promise.reject("ACCOUNTS_READ_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun saveAccount(accountMap: ReadableMap, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper.getInstance(reactContext)
+            val id = if (accountMap.hasKey("id")) accountMap.getString("id") ?: UUID.randomUUID().toString() else UUID.randomUUID().toString()
+            val userId = if (accountMap.hasKey("userId")) {
+                accountMap.getString("userId")
+            } else if (accountMap.hasKey("user_id")) {
+                accountMap.getString("user_id")
+            } else null
+
+            val name = if (accountMap.hasKey("name")) accountMap.getString("name") ?: "Nova Conta" else "Nova Conta"
+            val type = if (accountMap.hasKey("type")) accountMap.getString("type") ?: "CHECKING" else "CHECKING"
+            val color = if (accountMap.hasKey("color")) accountMap.getString("color") else "#10B981"
+            val icon = if (accountMap.hasKey("icon")) accountMap.getString("icon") else "wallet"
+            val initialBalance = if (accountMap.hasKey("initialBalance")) {
+                accountMap.getDouble("initialBalance")
+            } else if (accountMap.hasKey("initial_balance")) {
+                accountMap.getDouble("initial_balance")
+            } else 0.0
+
+            val isActive = if (accountMap.hasKey("isActive")) {
+                accountMap.getBoolean("isActive")
+            } else if (accountMap.hasKey("is_active")) {
+                accountMap.getBoolean("is_active")
+            } else true
+
+            val success = db.insertAccount(
+                id = id,
+                userId = userId,
+                name = name,
+                type = type,
+                color = color,
+                icon = icon,
+                initialBalance = initialBalance,
+                isActive = isActive
+            )
+            promise.resolve(success)
+        } catch (e: Exception) {
+            promise.reject("ACCOUNT_SAVE_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun updateAccount(accountMap: ReadableMap, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper.getInstance(reactContext)
+            val id = accountMap.getString("id") ?: return promise.reject("INVALID_ID", "ID da conta obrigatório.")
+            val userId = if (accountMap.hasKey("userId")) {
+                accountMap.getString("userId")
+            } else if (accountMap.hasKey("user_id")) {
+                accountMap.getString("user_id")
+            } else null
+
+            val name = if (accountMap.hasKey("name")) accountMap.getString("name") ?: "Conta" else "Conta"
+            val type = if (accountMap.hasKey("type")) accountMap.getString("type") ?: "CHECKING" else "CHECKING"
+            val color = if (accountMap.hasKey("color")) accountMap.getString("color") else "#10B981"
+            val icon = if (accountMap.hasKey("icon")) accountMap.getString("icon") else "wallet"
+            val initialBalance = if (accountMap.hasKey("initialBalance")) {
+                accountMap.getDouble("initialBalance")
+            } else if (accountMap.hasKey("initial_balance")) {
+                accountMap.getDouble("initial_balance")
+            } else 0.0
+
+            val isActive = if (accountMap.hasKey("isActive")) {
+                accountMap.getBoolean("isActive")
+            } else if (accountMap.hasKey("is_active")) {
+                accountMap.getBoolean("is_active")
+            } else true
+
+            val success = db.updateAccount(
+                id = id,
+                userId = userId,
+                name = name,
+                type = type,
+                color = color,
+                icon = icon,
+                initialBalance = initialBalance,
+                isActive = isActive
+            )
+            promise.resolve(success)
+        } catch (e: Exception) {
+            promise.reject("ACCOUNT_UPDATE_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun deleteAccount(id: String, userId: String?, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper.getInstance(reactContext)
+            val success = db.deleteAccount(id, userId)
+            promise.resolve(success)
+        } catch (e: Exception) {
+            promise.reject("ACCOUNT_DELETE_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun markAccountsSynced(ids: ReadableArray, userId: String?, promise: Promise) {
+        try {
+            val db = AppDatabaseHelper.getInstance(reactContext)
+            val success = db.markAccountsSynced(ids, userId)
+            promise.resolve(success)
+        } catch (e: Exception) {
+            promise.reject("ACCOUNTS_SYNC_MARK_ERROR", e.message)
         }
     }
 

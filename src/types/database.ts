@@ -42,3 +42,10 @@ export interface Transaction extends SyncControl {
   date: string; // ISO-8601 UTC
   is_business: boolean; // Flag PF / PJ
 }
+
+export interface Budget {
+  user_id: string;
+  category_id: string;
+  limit_amount: number;
+  updated_at: string;
+}

@@ -7,6 +7,7 @@ import { useFinance } from '../context/FinanceContext';
 import { MonitoredBank } from '../types/finance';
 import type { RootStackParamList } from '../types/navigation';
 import ManageBanksModal from '../components/ManageBanksModal';
+import ManageAccountsModal from '../components/ManageAccountsModal';
 import ExportReportModal from '../components/ExportReportModal';
 import {
   loadAndSyncMonitoredBanks,
@@ -17,11 +18,12 @@ const { NotificationModule } = NativeModules;
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  const { user, logout } = useAuth();
+  const { user, logout, resetOnboarding } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const { hasPermission, requestPermission, transactions } = useFinance();
+  const { hasPermission, requestPermission, transactions, accounts } = useFinance();
   const [banks, setBanks] = useState<MonitoredBank[]>([]);
   const [isManageBanksOpen, setIsManageBanksOpen] = useState(false);
+  const [isManageAccountsOpen, setIsManageAccountsOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   const loadMonitoredBanks = useCallback(async () => {
@@ -176,6 +178,25 @@ export default function ProfileScreen() {
         <Text style={styles.optionValueText}>{activeCount} de {banks.length}</Text>
       </TouchableOpacity>
 
+      {/* Carteiras e Contas (Épico 1) */}
+      <TouchableOpacity
+        style={styles.optionCard}
+        activeOpacity={0.7}
+        onPress={() => setIsManageAccountsOpen(true)}>
+        <View style={styles.optionLeft}>
+          <View style={styles.optionTitleRow}>
+            <Text style={styles.optionTitle}>Minhas Carteiras & Contas</Text>
+            <Text style={styles.badgeHint}>GERENCIAR ↗</Text>
+          </View>
+          <Text style={styles.optionSubtitle}>
+            {accounts.length === 0
+              ? 'Nenhuma conta cadastrada'
+              : `${accounts.length} ${accounts.length === 1 ? 'conta ativa' : 'contas ativas'}`}
+          </Text>
+        </View>
+        <Text style={styles.optionValueText}>{accounts.length}</Text>
+      </TouchableOpacity>
+
       {/* Armazenamento Local */}
       <View style={styles.optionCard}>
         <View style={styles.optionLeft}>
@@ -184,6 +205,32 @@ export default function ProfileScreen() {
         </View>
         <Text style={styles.optionSecureText}>SEGURO</Text>
       </View>
+
+      {/* Rever Onboarding */}
+      <TouchableOpacity
+        style={styles.optionCard}
+        activeOpacity={0.7}
+        onPress={() => {
+          Alert.alert(
+            'Rever Onboarding',
+            'Deseja reabrir o fluxo de configuração inicial do SyncPay?',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Reabrir', onPress: () => resetOnboarding() },
+            ]
+          );
+        }}>
+        <View style={styles.optionLeft}>
+          <View style={styles.optionTitleRow}>
+            <Text style={styles.optionTitle}>Guia de Primeiro Acesso</Text>
+            <Text style={styles.badgeHint}>ONBOARDING ↺</Text>
+          </View>
+          <Text style={styles.optionSubtitle}>
+            Revisar apresentação e configurações recomendadas
+          </Text>
+        </View>
+        <Text style={styles.optionValueText}>REVER</Text>
+      </TouchableOpacity>
 
       {/* Botão de Logout */}
       <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.8} onPress={handleLogout}>
@@ -197,6 +244,11 @@ export default function ProfileScreen() {
         onToggleAll={handleToggleAll}
         onDone={handleSaveBanks}
         onClose={handleSaveBanks}
+      />
+
+      <ManageAccountsModal
+        visible={isManageAccountsOpen}
+        onClose={() => setIsManageAccountsOpen(false)}
       />
 
       <ExportReportModal

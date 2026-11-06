@@ -1,5 +1,21 @@
 export type TransactionType = 'EXPENSE' | 'INCOME';
 
+export type AccountType = 'CHECKING' | 'CREDIT_CARD' | 'INVESTMENT' | 'CASH';
+
+export interface Account {
+  id: string;
+  userId?: string;
+  user_id?: string;
+  name: string;
+  type: AccountType;
+  color?: string;
+  icon?: string;
+  initialBalance?: number;
+  initial_balance?: number;
+  isActive?: boolean;
+  is_active?: boolean;
+}
+
 export type CategoryId =
   | 'food'
   | 'transport'
@@ -17,9 +33,25 @@ export interface CategoryData {
   spent: number;
 }
 
+export interface Budget {
+  id?: string;
+  userId?: string;
+  user_id?: string;
+  categoryId: CategoryId;
+  category_id?: string;
+  limitAmount: number;
+  limit_amount?: number;
+  updatedAt?: string;
+  updated_at?: string;
+}
+
+export type MonthlyCategoryExpenses = Record<CategoryId, number>;
+
 export interface Transaction {
   id: string;
   userId?: string;
+  accountId?: string;
+  account_id?: string;
   title: string;
   amount: number;
   type: TransactionType;

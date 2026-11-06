@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { NativeModules, AppState, AppStateStatus } from 'react-native';
 import {
   Transaction,
+  Account,
   CategoryData,
   BankSpendingSummary,
   BankCategoryExpense,
@@ -10,7 +11,7 @@ import {
   CategoryId,
   TransactionType,
 } from '../types/finance';
-import { Transaction as DbTransaction } from '../types/database';
+import { Transaction as DbTransaction, Account as DbAccount } from '../types/database';
 import { Colors } from '../theme/colors';
 import { useAuth } from './AuthContext';
 import { loadAndSyncMonitoredBanks } from '../services/bankMonitorService';
@@ -23,12 +24,13 @@ import {
 
 const { NotificationModule } = NativeModules;
 
-interface NewTransactionInput {
+export interface NewTransactionInput {
   title: string;
   amount: number;
   type: TransactionType;
   category: CategoryId;
   bankName: string;
+  accountId?: string;
   note?: string;
 }
 
@@ -39,6 +41,7 @@ interface FinanceContextData {
   totalIncome: number;
   totalExpenses: number;
   transactions: Transaction[];
+  accounts: Account[];
   categories: CategoryData[];
   bankSummaries: BankSpendingSummary[];
   weeklyData: DaySpending[];
@@ -50,9 +53,14 @@ interface FinanceContextData {
     percentage: number;
   };
   addManualTransaction: (data: NewTransactionInput) => void;
-  updateCategoryBudget: (categoryId: CategoryId, newLimit: number) => void;
+  updateCategoryBudget: (categoryId: CategoryId, newLimit: number) => Promise<void> | void;
+  getMonthlyExpensesByCategory: () => Record<CategoryId, number>;
   deleteTransaction: (id: string) => Promise<void>;
   updateTransaction: (updatedTx: Transaction) => Promise<void>;
+  addAccount: (accountData: Omit<Account, 'id' | 'userId' | 'user_id'>) => Promise<Account>;
+  updateAccount: (account: Account) => Promise<void>;
+  deleteAccount: (id: string) => Promise<void>;
+  loadStoredAccounts: () => Promise<void>;
 }
 
 const VALID_CATEGORIES: CategoryId[] = [
@@ -82,26 +90,48 @@ const initialCategories: CategoryData[] = [
   { id: 'others', name: 'Outros', color: Colors.textSecondary, budgetLimit: 400, spent: 0 },
 ];
 
-const recalculateCategoryExpenses = (
-  txList: Transaction[],
-  currentCategories: CategoryData[],
-): CategoryData[] => {
+export function calculateCurrentMonthExpensesByCategory(
+  transactions: Transaction[],
+): Record<CategoryId, number> {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();
 
-  return currentCategories.map(cat => {
-    const totalSpentInCat = txList
-      .filter(t => {
-        if (t.category !== cat.id || t.type !== 'EXPENSE') {
-          return false;
-        }
-        const txDate = new Date(t.timestamp);
-        return txDate.getFullYear() === currentYear && txDate.getMonth() === currentMonth;
-      })
-      .reduce((acc, curr) => acc + curr.amount, 0);
-    return { ...cat, spent: totalSpentInCat };
-  });
+  const totals: Record<CategoryId, number> = {
+    food: 0,
+    transport: 0,
+    entertainment: 0,
+    bills: 0,
+    shopping: 0,
+    salary: 0,
+    others: 0,
+  };
+
+  for (const t of transactions) {
+    if (t.type !== 'EXPENSE') continue;
+    const txDate = new Date(t.timestamp);
+    if (txDate.getFullYear() === currentYear && txDate.getMonth() === currentMonth) {
+      const catId = t.category;
+      if (totals[catId] !== undefined) {
+        totals[catId] += t.amount;
+      } else {
+        totals.others += t.amount;
+      }
+    }
+  }
+
+  return totals;
+}
+
+const recalculateCategoryExpenses = (
+  txList: Transaction[],
+  currentCategories: CategoryData[],
+): CategoryData[] => {
+  const spentByCat = calculateCurrentMonthExpensesByCategory(txList);
+  return currentCategories.map(cat => ({
+    ...cat,
+    spent: spentByCat[cat.id] ?? 0,
+  }));
 };
 
 const toFinanceTransaction = (transaction: CapturedBankTransaction): Transaction => {
@@ -153,12 +183,44 @@ const fromRemoteDbTransaction = (dbTx: DbTransaction): Transaction => {
   };
 };
 
+const mapToDbAccount = (account: Account, userId: string, isDeleted = false): DbAccount => {
+  return {
+    id: account.id,
+    user_id: userId,
+    name: account.name,
+    type: account.type,
+    color: account.color,
+    icon: account.icon,
+    initial_balance: account.initialBalance ?? account.initial_balance ?? 0,
+    is_active: account.isActive ?? account.is_active ?? true,
+    synced_at: null,
+    updated_at: new Date().toISOString(),
+    is_deleted: isDeleted,
+  };
+};
+
+const fromDbAccount = (dbAcc: DbAccount): Account => {
+  return {
+    id: dbAcc.id,
+    userId: dbAcc.user_id,
+    user_id: dbAcc.user_id,
+    name: dbAcc.name,
+    type: dbAcc.type,
+    color: dbAcc.color,
+    icon: dbAcc.icon,
+    initialBalance: dbAcc.initial_balance,
+    initial_balance: dbAcc.initial_balance,
+    isActive: dbAcc.is_active,
+    is_active: dbAcc.is_active,
+  };
+};
+
 const mapToDbTransaction = (tx: Transaction, userId: string, isDeleted = false): DbTransaction => {
   const isoDate = new Date(tx.timestamp || Date.now()).toISOString();
   return {
     id: tx.id,
     user_id: userId,
-    account_id: undefined,
+    account_id: tx.accountId || tx.account_id || undefined,
     category_id: tx.category,
     amount: tx.amount,
     type: tx.type,
@@ -181,7 +243,149 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [hasPermission, setHasPermission] = useState<boolean>(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<CategoryData[]>(initialCategories);
+
+  const pushAccountsToCloud = useCallback(
+    async (dbAccList: DbAccount[]) => {
+      if (!currentUserId || currentUserId === 'default_user') {
+        return;
+      }
+      try {
+        const syncedIds = await syncService.pushAccounts(dbAccList, currentUserId);
+        if (syncedIds.length > 0 && NotificationModule?.markAccountsSynced) {
+          await NotificationModule.markAccountsSynced(syncedIds, currentUserId);
+        }
+      } catch (err) {
+        console.log('[SyncEngine] Conta salva localmente (subirá quando online):', err);
+      }
+    },
+    [currentUserId],
+  );
+
+  const loadStoredAccounts = useCallback(async () => {
+    if (!currentUserId) return;
+    try {
+      let localAccounts: Account[] = [];
+      if (NotificationModule?.getStoredAccounts) {
+        const stored = await NotificationModule.getStoredAccounts(currentUserId);
+        if (Array.isArray(stored)) {
+          localAccounts = stored;
+        }
+      }
+
+      try {
+        const remoteAccounts = await syncService.pullAccounts(currentUserId);
+        if (remoteAccounts.length > 0) {
+          const byId = new Map<string, Account>();
+          localAccounts.forEach(acc => byId.set(acc.id, acc));
+
+          for (const remote of remoteAccounts) {
+            if (remote.is_deleted) {
+              byId.delete(remote.id);
+              await NotificationModule?.deleteAccount?.(remote.id, currentUserId);
+            } else if (!byId.has(remote.id)) {
+              const converted = fromDbAccount(remote);
+              byId.set(converted.id, converted);
+              await NotificationModule?.saveAccount?.({
+                ...converted,
+                userId: currentUserId,
+              });
+              await NotificationModule?.markAccountsSynced?.([converted.id], currentUserId);
+            }
+          }
+          localAccounts = Array.from(byId.values());
+        }
+      } catch {
+        // Offline
+      }
+
+      setAccounts(localAccounts);
+    } catch (e) {
+      console.error('Erro ao ler carteiras no SQLite:', e);
+    }
+  }, [currentUserId]);
+
+  const addAccount = useCallback(
+    async (accountData: Omit<Account, 'id' | 'userId' | 'user_id'>): Promise<Account> => {
+      const newAcc: Account = {
+        id: generateUuid(),
+        userId: currentUserId,
+        user_id: currentUserId,
+        name: accountData.name.trim(),
+        type: accountData.type,
+        color: accountData.color || '#10B981',
+        icon: accountData.icon || 'wallet',
+        initialBalance: accountData.initialBalance || 0,
+        initial_balance: accountData.initialBalance || 0,
+        isActive: accountData.isActive !== false,
+        is_active: accountData.isActive !== false,
+      };
+
+      try {
+        if (NotificationModule?.saveAccount) {
+          await NotificationModule.saveAccount({
+            ...newAcc,
+            userId: currentUserId,
+          });
+        }
+      } catch (err) {
+        console.error('Erro ao salvar conta no SQLite:', err);
+      }
+
+      if (currentUserId) {
+        pushAccountsToCloud([mapToDbAccount(newAcc, currentUserId)]);
+      }
+
+      setAccounts(prev => [newAcc, ...prev]);
+      return newAcc;
+    },
+    [currentUserId, pushAccountsToCloud],
+  );
+
+  const updateAccount = useCallback(
+    async (updatedAcc: Account) => {
+      try {
+        if (NotificationModule?.updateAccount) {
+          await NotificationModule.updateAccount({
+            ...updatedAcc,
+            userId: currentUserId,
+          });
+        }
+      } catch (err) {
+        console.error('Erro ao atualizar conta no SQLite:', err);
+      }
+
+      if (currentUserId) {
+        pushAccountsToCloud([mapToDbAccount(updatedAcc, currentUserId)]);
+      }
+
+      setAccounts(prev => prev.map(a => (a.id === updatedAcc.id ? updatedAcc : a)));
+    },
+    [currentUserId, pushAccountsToCloud],
+  );
+
+  const deleteAccount = useCallback(
+    async (id: string) => {
+      try {
+        if (NotificationModule?.deleteAccount) {
+          await NotificationModule.deleteAccount(id, currentUserId);
+        }
+      } catch (err) {
+        console.error('Erro ao deletar conta no SQLite:', err);
+      }
+
+      if (currentUserId) {
+        const toDelete = accounts.find(a => a.id === id);
+        if (toDelete) {
+          pushAccountsToCloud([mapToDbAccount(toDelete, currentUserId, true)]);
+        }
+      }
+
+      setAccounts(prev => prev.filter(a => a.id !== id));
+    },
+    [currentUserId, accounts, pushAccountsToCloud],
+  );
 
   const pushToCloud = useCallback(
     async (dbTxList: DbTransaction[]) => {
@@ -237,6 +441,21 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       }
 
+      // Sincroniza orçamentos remotos do Supabase se online
+      try {
+        const remoteBudgets = await syncService.pullBudgets(currentUserId);
+        if (remoteBudgets.length > 0) {
+          for (const b of remoteBudgets) {
+            if (storedBudgets[b.category_id] === undefined) {
+              storedBudgets[b.category_id] = b.limit_amount;
+              await NotificationModule?.saveCategoryBudget?.(b.category_id, b.limit_amount, currentUserId);
+            }
+          }
+        }
+      } catch {
+        // Modo offline
+      }
+
       // Sincroniza registros remotos do Supabase (pull)
       try {
         const remoteDbList = await syncService.pullTransactions(currentUserId);
@@ -276,10 +495,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }));
         return recalculateCategoryExpenses(localList, withBudgets);
       });
+
+      await loadStoredAccounts();
     } catch (e) {
       console.error('Erro ao ler SQLite nativo:', e);
     }
-  }, [currentUserId]);
+  }, [currentUserId, loadStoredAccounts]);
 
   useEffect(() => {
     loadAndSyncMonitoredBanks(user?.role === 'admin');
@@ -319,6 +540,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const newTx: Transaction = {
         id: generateUuid(),
         userId: currentUserId,
+        accountId: data.accountId,
+        account_id: data.accountId,
         title: data.title.trim() || (data.type === 'EXPENSE' ? 'Despesa Manual' : 'Receita Manual'),
         amount: data.amount,
         type: data.type,
@@ -347,19 +570,43 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 
   const updateCategoryBudget = useCallback(
-    (categoryId: CategoryId, newLimit: number) => {
+    async (categoryId: CategoryId, newLimit: number) => {
       try {
-        NotificationModule?.saveCategoryBudget?.(categoryId, newLimit, currentUserId);
+        if (NotificationModule?.saveCategoryBudget) {
+          await NotificationModule.saveCategoryBudget(categoryId, newLimit, currentUserId);
+        }
       } catch (err) {
-        console.error('Erro salvando meta nativa:', err);
+        console.error('Erro salvando meta nativa no SQLite:', err);
       }
 
       setCategories(prev =>
         prev.map(cat => (cat.id === categoryId ? { ...cat, budgetLimit: newLimit } : cat)),
       );
+
+      if (currentUserId && currentUserId !== 'default_user') {
+        try {
+          await syncService.pushBudgets(
+            [
+              {
+                user_id: currentUserId,
+                category_id: categoryId,
+                limit_amount: newLimit,
+                updated_at: new Date().toISOString(),
+              },
+            ],
+            currentUserId,
+          );
+        } catch (syncErr) {
+          console.log('[SyncEngine] Falha ao sincronizar budget:', syncErr);
+        }
+      }
     },
     [currentUserId],
   );
+
+  const getMonthlyExpensesByCategory = useCallback((): Record<CategoryId, number> => {
+    return calculateCurrentMonthExpensesByCategory(transactions);
+  }, [transactions]);
 
   const deleteTransaction = useCallback(
     async (id: string) => {
@@ -602,6 +849,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         totalIncome,
         totalExpenses,
         transactions,
+        accounts,
         categories,
         bankSummaries,
         weeklyData,
@@ -614,8 +862,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         },
         addManualTransaction,
         updateCategoryBudget,
+        getMonthlyExpensesByCategory,
         deleteTransaction,
         updateTransaction,
+        addAccount,
+        updateAccount,
+        deleteAccount,
+        loadStoredAccounts,
       }}>
       {children}
     </FinanceContext.Provider>

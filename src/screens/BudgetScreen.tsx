@@ -14,6 +14,14 @@ export default function BudgetScreen() {
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (circumference * Math.min(100, monthlyBudget.percentage)) / 100;
 
+  // Cor consolidada do gauge baseada nos mesmos limiares (<75% Verde, 75%-90% Laranja/Amarelo, >90% Vermelho)
+  const consolidatedColor =
+    monthlyBudget.percentage > 90
+      ? '#ef4444'
+      : monthlyBudget.percentage >= 75
+      ? '#f59e0b'
+      : '#c6f135';
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
@@ -30,7 +38,7 @@ export default function BudgetScreen() {
               cx="55"
               cy="55"
               r={radius}
-              stroke={monthlyBudget.percentage >= 100 ? Colors.expense : Colors.primary}
+              stroke={consolidatedColor}
               strokeWidth="9"
               strokeDasharray={`${circumference} ${circumference}`}
               strokeDashoffset={strokeDashoffset}
@@ -43,7 +51,7 @@ export default function BudgetScreen() {
             <Text
               style={[
                 styles.gaugePercentage,
-                monthlyBudget.percentage >= 100 && styles.gaugePercentageAlert,
+                { color: consolidatedColor },
               ]}>
               {monthlyBudget.percentage}%
             </Text>
@@ -78,11 +86,42 @@ export default function BudgetScreen() {
 
       {/* Lista Interativa de Metas por Categoria */}
       {categories.map(item => {
-        const pct = item.budgetLimit > 0 ? Math.round((item.spent / item.budgetLimit) * 100) : 0;
-        const isOver = pct >= 100;
-        const isWarning = pct >= 80 && pct < 100;
+        const hasLimit = item.budgetLimit > 0;
+        const pct = hasLimit ? Math.round((item.spent / item.budgetLimit) * 100) : 0;
 
-        const barColor = isOver ? Colors.expense : isWarning ? Colors.catFood : Colors.primary;
+        // Regra de Cores e Alertas do Épico 2:
+        // - Verde: < 75%
+        // - Amarelo/Laranja: Entre 75% e 90%
+        // - Vermelho: > 90%
+        let barColor = '#c6f135'; // Verde neon
+        let statusBadge = {
+          text: 'NORMAL',
+          textColor: '#c6f135',
+          bgColor: 'rgba(198, 241, 53, 0.12)',
+        };
+
+        if (!hasLimit) {
+          barColor = Colors.border;
+          statusBadge = {
+            text: 'SEM LIMITE',
+            textColor: Colors.textMuted,
+            bgColor: 'rgba(255, 255, 255, 0.05)',
+          };
+        } else if (pct > 90) {
+          barColor = '#ef4444'; // Vermelho
+          statusBadge = {
+            text: pct >= 100 ? 'ESTOURADO' : 'CRÍTICO',
+            textColor: '#ef4444',
+            bgColor: 'rgba(239, 68, 68, 0.16)',
+          };
+        } else if (pct >= 75) {
+          barColor = '#f59e0b'; // Amarelo/Laranja
+          statusBadge = {
+            text: 'ATENÇÃO',
+            textColor: '#f59e0b',
+            bgColor: 'rgba(245, 158, 11, 0.16)',
+          };
+        }
 
         return (
           <TouchableOpacity
@@ -94,31 +133,38 @@ export default function BudgetScreen() {
               <View style={styles.categoryTitleRow}>
                 <View style={[styles.catDot, { backgroundColor: item.color }]} />
                 <Text style={styles.categoryName}>{item.name}</Text>
-                {isOver ? (
-                  <View style={styles.alertBadge}>
-                    <Text style={styles.alertBadgeText}>ESTOURADO</Text>
-                  </View>
-                ) : isWarning ? (
-                  <View style={styles.warningBadge}>
-                    <Text style={styles.warningBadgeText}>ALERTA</Text>
-                  </View>
-                ) : null}
+                <View style={[styles.badgeContainer, { backgroundColor: statusBadge.bgColor }]}>
+                  <Text style={[styles.badgeText, { color: statusBadge.textColor }]}>
+                    {statusBadge.text}
+                  </Text>
+                </View>
               </View>
 
               <Text style={styles.categoryNumbers}>
                 {item.spent.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}{' '}
                 <Text style={styles.categoryLimit}>
-                  / {item.budgetLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  / {hasLimit ? item.budgetLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Sem teto'}
                 </Text>
               </Text>
             </View>
 
+            {/* Barra de Progresso Horizontal */}
             <View style={styles.progressBarBackground}>
-              <View style={[styles.progressBarFill, { width: `${Math.min(100, pct)}%`, backgroundColor: barColor }]} />
+              <View
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: `${hasLimit ? Math.min(100, Math.max(2, pct)) : 0}%`,
+                    backgroundColor: barColor,
+                  },
+                ]}
+              />
             </View>
 
             <View style={styles.cardFooter}>
-              <Text style={styles.footerPctText}>{pct}% utilizado</Text>
+              <Text style={styles.footerPctText}>
+                {hasLimit ? `${pct}% utilizado` : 'Toque para definir um teto'}
+              </Text>
               <Text style={styles.footerAdjustText}>Editar meta ✎</Text>
             </View>
           </TouchableOpacity>
@@ -149,15 +195,14 @@ const styles = StyleSheet.create({
   },
   gaugeContainer: { position: 'relative', width: 110, height: 110, justifyContent: 'center', alignItems: 'center' },
   gaugeLabelWrapper: { position: 'absolute', alignItems: 'center' },
-  gaugePercentage: { color: Colors.textPrimary, fontSize: 18, fontWeight: '800' },
-  gaugePercentageAlert: { color: Colors.expense },
+  gaugePercentage: { fontSize: 18, fontWeight: '800' },
   gaugeSubtext: { color: Colors.textSecondary, fontSize: 9, fontWeight: '700', marginTop: 1 },
   budgetMetrics: { justifyContent: 'center' },
   remainingBlock: { marginTop: 10 },
   budgetMetricLabel: { color: Colors.textSecondary, fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
   budgetLimitValue: { color: Colors.textPrimary, fontSize: 17, fontWeight: '800', marginTop: 2 },
   budgetRemainingValue: { color: Colors.primary, fontSize: 17, fontWeight: '700', marginTop: 2 },
-  remainingAlert: { color: Colors.expense },
+  remainingAlert: { color: '#ef4444' },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -178,20 +223,12 @@ const styles = StyleSheet.create({
   categoryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   catDot: { width: 8, height: 8, borderRadius: 4 },
   categoryName: { color: Colors.textPrimary, fontSize: 14, fontWeight: '600' },
-  alertBadge: {
-    backgroundColor: 'rgba(248, 113, 113, 0.15)',
-    paddingHorizontal: 6,
+  badgeContainer: {
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 4,
   },
-  alertBadgeText: { color: Colors.expense, fontSize: 9, fontWeight: '800' },
-  warningBadge: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  warningBadgeText: { color: Colors.catFood, fontSize: 9, fontWeight: '800' },
+  badgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
   categoryNumbers: { color: Colors.textPrimary, fontSize: 13, fontWeight: '700' },
   categoryLimit: { color: Colors.textMuted, fontSize: 11, fontWeight: '500' },
   progressBarBackground: { height: 8, backgroundColor: '#18242a', borderRadius: 4, overflow: 'hidden' },

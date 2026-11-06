@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import Svg, { Polyline, Circle, Line } from 'react-native-svg';
+import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { Colors } from '../theme/colors';
 import { BankSpendingSummary } from '../types/finance';
 import { useFinance } from '../context/FinanceContext';
@@ -9,10 +9,27 @@ import IncomeExpenseDetailModal from '../components/IncomeExpenseDetailModal';
 import CategoryDistributionModal from '../components/CategoryDistributionModal';
 
 export default function StatsScreen() {
-  const { bankSummaries, categories, monthlyHistory } = useFinance();
+  const { bankSummaries, categories, monthlyHistory, totalIncome, totalExpenses } = useFinance();
   const [selectedBank, setSelectedBank] = useState<BankSpendingSummary | null>(null);
   const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+
+  // Métricas resumo do mês corrente
+  const currentMonth = useMemo(() => {
+    if (monthlyHistory.length === 0) { return null; }
+    return monthlyHistory[monthlyHistory.length - 1];
+  }, [monthlyHistory]);
+
+  const prevMonth = useMemo(() => {
+    if (monthlyHistory.length < 2) { return null; }
+    return monthlyHistory[monthlyHistory.length - 2];
+  }, [monthlyHistory]);
+
+  const expenseTrend = useMemo(() => {
+    if (!currentMonth || !prevMonth || prevMonth.expense === 0) { return null; }
+    const diff = ((currentMonth.expense - prevMonth.expense) / prevMonth.expense) * 100;
+    return Math.round(diff);
+  }, [currentMonth, prevMonth]);
 
   // Escala dinâmica das polilinhas (Receitas vs Despesas)
   const maxMonthlyVal = Math.max(
@@ -54,16 +71,43 @@ export default function StatsScreen() {
       color: cat.color,
       name: cat.name,
       percentage: Math.round(fraction * 100),
+      spent: cat.spent,
       strokeDash,
       rotation,
     };
-  });
+  }).sort((a, b) => b.spent - a.spent);
+
+  const savingsRate = totalIncome > 0 ? Math.round(((totalIncome - totalExpenses) / totalIncome) * 100) : 0;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <Text style={styles.headerSubtitle}>ANALÍTICA</Text>
         <Text style={styles.headerTitle}>Insights</Text>
+      </View>
+
+      {/* Resumo Rápido do Mês */}
+      <View style={styles.quickSummaryRow}>
+        <View style={styles.quickCard}>
+          <Text style={styles.quickCardLabel}>TAXA DE RETENÇÃO</Text>
+          <Text style={[styles.quickCardValue, { color: savingsRate >= 0 ? Colors.primary : Colors.expense }]}>
+            {savingsRate}%
+          </Text>
+        </View>
+        <View style={styles.quickCard}>
+          <Text style={styles.quickCardLabel}>DESPESAS DO MÊS</Text>
+          <Text style={[styles.quickCardValue, { color: Colors.expense }]}>
+            {(currentMonth?.expense ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+          </Text>
+        </View>
+        {expenseTrend !== null && (
+          <View style={styles.quickCard}>
+            <Text style={styles.quickCardLabel}>VS MÊS ANTERIOR</Text>
+            <Text style={[styles.quickCardValue, { color: expenseTrend <= 0 ? Colors.primary : Colors.expense }]}>
+              {expenseTrend > 0 ? '↑' : '↓'} {Math.abs(expenseTrend)}%
+            </Text>
+          </View>
+        )}
       </View>
 
       <Text style={styles.sectionTitle}>RANKING DE GASTOS POR BANCO</Text>
@@ -113,15 +157,39 @@ export default function StatsScreen() {
           <Text style={styles.expandHint}>EXPANDIR ↗</Text>
         </View>
         <View style={styles.svgWrapper}>
-          <Svg width="100%" height="110" viewBox="0 0 280 110">
+          <Svg width="100%" height="120" viewBox="0 0 280 120">
             <Line x1="10" y1="95" x2="270" y2="95" stroke="#1f2d37" strokeWidth="1" />
+            <Line x1="10" y1="55" x2="270" y2="55" stroke="#1f2d37" strokeWidth="1" strokeDasharray="3 3" />
             <Polyline points={incomePoints} fill="none" stroke={Colors.primary} strokeWidth="2.5" />
             <Polyline points={expensePoints} fill="none" stroke={Colors.expense} strokeWidth="2.5" />
+
+            {/* Pontos de dados com círculos */}
+            {monthlyHistory.map((m, i) => {
+              const x = 20 + i * 48;
+              const yInc = 95 - (m.income / maxMonthlyVal) * 75;
+              const yExp = 95 - (m.expense / maxMonthlyVal) * 75;
+              return (
+                <React.Fragment key={m.monthKey}>
+                  <Circle cx={x} cy={yInc} r={3.5} fill={Colors.primary} />
+                  <Circle cx={x} cy={yExp} r={3.5} fill={Colors.expense} />
+                </React.Fragment>
+              );
+            })}
           </Svg>
           <View style={styles.monthsRow}>
             {monthlyHistory.map(m => (
               <Text key={m.monthKey} style={styles.monthText}>{m.short}</Text>
             ))}
+          </View>
+          <View style={styles.legendRow}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: Colors.primary }]} />
+              <Text style={styles.legendLabel}>Receitas</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: Colors.expense }]} />
+              <Text style={styles.legendLabel}>Despesas</Text>
+            </View>
           </View>
         </View>
       </TouchableOpacity>
@@ -135,31 +203,46 @@ export default function StatsScreen() {
           <Text style={styles.chartCardTitle}>DISTRIBUIÇÃO POR CATEGORIA</Text>
           <Text style={styles.expandHint}>EXPANDIR ↗</Text>
         </View>
-        <View style={styles.donutPlaceholderRow}>
-          <Svg width="90" height="90" viewBox="0 0 90 90">
-            <Circle cx="45" cy="45" r={radius} stroke="#1b252c" strokeWidth="10" fill="transparent" />
-            {arcs.map(arc => (
-              <Circle
-                key={arc.id}
-                cx="45"
-                cy="45"
-                r={radius}
-                stroke={arc.color}
-                strokeWidth="10"
-                strokeDasharray={`${arc.strokeDash} ${circumference}`}
-                fill="transparent"
-                transform={`rotate(${arc.rotation} 45 45)`}
-              />
-            ))}
-          </Svg>
+        <View style={styles.donutRow}>
+          <View style={styles.donutContainer}>
+            <Svg width="90" height="90" viewBox="0 0 90 90">
+              <Circle cx="45" cy="45" r={radius} stroke="#1b252c" strokeWidth="10" fill="transparent" />
+              {arcs.map(arc => (
+                <Circle
+                  key={arc.id}
+                  cx="45"
+                  cy="45"
+                  r={radius}
+                  stroke={arc.color}
+                  strokeWidth="10"
+                  strokeDasharray={`${arc.strokeDash} ${circumference}`}
+                  fill="transparent"
+                  transform={`rotate(${arc.rotation} 45 45)`}
+                />
+              ))}
+            </Svg>
+            {/* Total central */}
+            <View style={styles.donutCenter}>
+              <Text style={styles.donutCenterLabel}>TOTAL</Text>
+              <Text style={styles.donutCenterValue}>
+                {totalSpent >= 1000
+                  ? `${(totalSpent / 1000).toFixed(1).replace(/\.0$/, '')}k`
+                  : totalSpent.toFixed(0)}
+              </Text>
+            </View>
+          </View>
           <View style={styles.legendContainer}>
             {arcs.length === 0 ? (
               <Text style={styles.legendEmpty}>Sem despesas registradas</Text>
             ) : (
               arcs.map(arc => (
-                <Text key={arc.id} style={styles.legendItem}>
-                  <Text style={{ color: arc.color }}>●</Text> {arc.name} ({arc.percentage}%)
-                </Text>
+                <View key={arc.id} style={styles.catLegendRow}>
+                  <View style={styles.catLegendLeft}>
+                    <View style={[styles.legendDot, { backgroundColor: arc.color }]} />
+                    <Text style={styles.catLegendName}>{arc.name}</Text>
+                  </View>
+                  <Text style={styles.catLegendPct}>{arc.percentage}%</Text>
+                </View>
               ))
             )}
           </View>
@@ -179,6 +262,22 @@ const styles = StyleSheet.create({
   header: { marginTop: 10, marginBottom: 18 },
   headerSubtitle: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600', letterSpacing: 1 },
   headerTitle: { color: Colors.textPrimary, fontSize: 24, fontWeight: '700', marginTop: 2 },
+
+  /* Quick Summary */
+  quickSummaryRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
+  quickCard: {
+    flex: 1,
+    backgroundColor: Colors.surfaceCard,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  quickCardLabel: { color: Colors.textMuted, fontSize: 8, fontWeight: '700', letterSpacing: 0.5, marginBottom: 4 },
+  quickCardValue: { fontSize: 15, fontWeight: '800' },
+
   sectionTitle: { color: Colors.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.8, marginBottom: 12 },
   emptyCard: {
     backgroundColor: Colors.surfaceCard,
@@ -252,8 +351,25 @@ const styles = StyleSheet.create({
   svgWrapper: { alignItems: 'center' },
   monthsRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 8 },
   monthText: { color: Colors.textMuted, fontSize: 11, fontWeight: '600' },
-  donutPlaceholderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', marginTop: 6 },
-  legendContainer: { gap: 6 },
-  legendItem: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
+
+  /* Legend shared */
+  legendRow: { flexDirection: 'row', gap: 20, marginTop: 10 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600' },
+
+  /* Donut */
+  donutRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', marginTop: 6 },
+  donutContainer: { position: 'relative', width: 90, height: 90, alignItems: 'center', justifyContent: 'center' },
+  donutCenter: { position: 'absolute', alignItems: 'center' },
+  donutCenterLabel: { color: Colors.textMuted, fontSize: 8, fontWeight: '700', letterSpacing: 0.5 },
+  donutCenterValue: { color: Colors.textPrimary, fontSize: 14, fontWeight: '800', marginTop: 1 },
+  legendContainer: { gap: 6, flex: 1, paddingLeft: 16 },
   legendEmpty: { color: Colors.textMuted, fontSize: 12 },
+
+  /* Category legend rows */
+  catLegendRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  catLegendLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  catLegendName: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
+  catLegendPct: { color: Colors.textPrimary, fontSize: 12, fontWeight: '700' },
 });

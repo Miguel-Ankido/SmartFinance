@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import Svg, { Rect } from 'react-native-svg';
+import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 import { Colors } from '../theme/colors';
 import { Transaction } from '../types/finance';
 import { useFinance } from '../context/FinanceContext';
@@ -9,14 +9,22 @@ import TransactionDetailModal from '../components/TransactionDetailModal';
 import WeeklyOutflowDetailModal from '../components/WeeklyOutflowDetailModal';
 import { NotificationPermissionCard } from '../components/NotificationPermissionCard';
 
+const formatCompact = (value: number): string => {
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+  }
+  return value > 0 ? value.toFixed(0) : '';
+};
+
 export default function HomeScreen({ navigation }: any) {
   const { user } = useAuth();
-const { totalBalance, totalIncome, totalExpenses, transactions, weeklyData } = useFinance();
-const firstName = user?.name ? user.name.split(' ')[0] : 'Usuário';
+  const { totalBalance, totalIncome, totalExpenses, transactions, weeklyData } = useFinance();
+  const firstName = user?.name ? user.name.split(' ')[0] : 'Usuário';
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [isWeeklyModalOpen, setIsWeeklyModalOpen] = useState(false);
 
   const recent = transactions.slice(0, 3);
+  const totalWeekExpense = weeklyData.reduce((acc, d) => acc + d.amount, 0);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -58,32 +66,53 @@ const firstName = user?.name ? user.name.split(' ')[0] : 'Usuário';
         activeOpacity={0.75}
         onPress={() => setIsWeeklyModalOpen(true)}>
         <View style={styles.chartTitleRow}>
-          <Text style={styles.cardHeaderTitle}>FLUXO DE SAÍDAS SEMANAL</Text>
+          <View>
+            <Text style={styles.cardHeaderTitle}>FLUXO DE SAÍDAS SEMANAL</Text>
+            {totalWeekExpense > 0 && (
+              <Text style={styles.weekTotalText}>
+                Total: {totalWeekExpense.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </Text>
+            )}
+          </View>
           <Text style={styles.expandHint}>EXPANDIR ↗</Text>
         </View>
 
         <View style={styles.chartWrapper}>
-          <Svg width="100%" height="80" viewBox="0 0 280 80">
+          <Svg width="100%" height="100" viewBox="0 0 280 100">
             {weeklyData.map((d, index) => {
               const x = 12 + index * 38;
-              const y = 80 - d.height;
-              const barColor = d.isPeak ? Colors.primary : '#1b2a32';
+              const barHeight = d.height;
+              const y = 95 - barHeight;
+              const barColor = d.isToday ? Colors.primary : d.isPeak ? '#5a8a1a' : '#1b2a32';
+              const label = formatCompact(d.amount);
               return (
-                <Rect
-                  key={d.dayName}
-                  x={x}
-                  y={y}
-                  width="18"
-                  height={d.height}
-                  rx="3"
-                  fill={barColor}
-                />
+                <React.Fragment key={d.dayName}>
+                  {label !== '' && (
+                    <SvgText
+                      x={x + 9}
+                      y={y - 4}
+                      fontSize="9"
+                      fill={d.isToday ? Colors.primary : Colors.textSecondary}
+                      textAnchor="middle"
+                      fontWeight="600">
+                      {label}
+                    </SvgText>
+                  )}
+                  <Rect
+                    x={x}
+                    y={y}
+                    width="18"
+                    height={barHeight}
+                    rx="3"
+                    fill={barColor}
+                  />
+                </React.Fragment>
               );
             })}
           </Svg>
           <View style={styles.daysRow}>
             {weeklyData.map(d => (
-              <Text key={d.dayName} style={[styles.dayText, d.isPeak && styles.activeDayText]}>
+              <Text key={d.dayName} style={[styles.dayText, d.isToday && styles.activeDayText, d.isPeak && !d.isToday && styles.peakDayText]}>
                 {d.short}
               </Text>
             ))}
@@ -164,14 +193,16 @@ const styles = StyleSheet.create({
   chartTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   cardHeaderTitle: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 0.8 },
+  weekTotalText: { color: Colors.expense, fontSize: 13, fontWeight: '700', marginTop: 4 },
   expandHint: { color: Colors.primary, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
   chartWrapper: { marginTop: 16 },
   daysRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 8 },
   dayText: { color: Colors.textMuted, fontSize: 12, fontWeight: '600' },
-  activeDayText: { color: Colors.primary },
+  activeDayText: { color: Colors.primary, fontWeight: '800' },
+  peakDayText: { color: '#5a8a1a', fontWeight: '800' },
   transactionsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',

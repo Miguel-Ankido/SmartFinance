@@ -1,14 +1,20 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { NativeModules } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session, User as SupabaseAuthUser } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase } from '../services/supabase';
 import type { User, UserRole } from '../types/auth';
 
 const { NotificationModule } = NativeModules;
 
+export const ONBOARDING_STORAGE_PREFIX = '@SyncPay:hasCompletedOnboarding_';
+
 interface AuthContextData {
   user: User | null;
   isLoading: boolean;
+  hasCompletedOnboarding: boolean;
+  completeOnboarding: () => Promise<void>;
+  resetOnboarding: () => Promise<void>;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (
     name: string,
@@ -77,13 +83,54 @@ function toLocalUser(user: LocalUser): User {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(true);
+
+  const checkOnboardingStatus = useCallback(async (userId: string) => {
+    try {
+      const val = await AsyncStorage.getItem(`${ONBOARDING_STORAGE_PREFIX}${userId}`);
+      setHasCompletedOnboarding(val === 'true');
+    } catch {
+      setHasCompletedOnboarding(false);
+    }
+  }, []);
+
+  const completeOnboarding = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      await AsyncStorage.setItem(`${ONBOARDING_STORAGE_PREFIX}${user.id}`, 'true');
+      setHasCompletedOnboarding(true);
+    } catch (e) {
+      console.error('Erro ao salvar status de onboarding:', e);
+      setHasCompletedOnboarding(true);
+    }
+  }, [user?.id]);
+
+  const resetOnboarding = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      await AsyncStorage.removeItem(`${ONBOARDING_STORAGE_PREFIX}${user.id}`);
+      setHasCompletedOnboarding(false);
+    } catch (e) {
+      console.error('Erro ao resetar onboarding:', e);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (user?.id) {
+      checkOnboardingStatus(user.id);
+    } else {
+      setHasCompletedOnboarding(true);
+    }
+  }, [user?.id, checkOnboardingStatus]);
 
   const checkLocalSession = useCallback(async () => {
     try {
       if (NotificationModule?.getActiveUser) {
         const activeUser: LocalUser | null = await NotificationModule.getActiveUser();
         if (activeUser?.id) {
-          setUser(toLocalUser(activeUser));
+          const appUser = toLocalUser(activeUser);
+          setUser(appUser);
+          await checkOnboardingStatus(appUser.id);
         }
       }
     } catch (error) {
@@ -91,7 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [checkOnboardingStatus]);
 
   useEffect(() => {
     const client = supabase;
@@ -106,6 +153,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const nextUser = session?.user ? await toAppUser(session.user) : null;
       if (isMounted) {
         setUser(nextUser);
+        if (nextUser?.id) {
+          await checkOnboardingStatus(nextUser.id);
+        }
       }
     };
 
@@ -140,7 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isMounted = false;
       data.subscription.unsubscribe();
     };
-  }, [checkLocalSession]);
+  }, [checkLocalSession, checkOnboardingStatus]);
 
   const login = async (
     email: string,
@@ -153,7 +203,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return { success: false, error: error?.message || 'Unable to authenticate.' };
         }
 
-        setUser(await toAppUser(data.user));
+        const appUser = await toAppUser(data.user);
+        setUser(appUser);
+        await checkOnboardingStatus(appUser.id);
         return { success: true };
       }
 
@@ -162,7 +214,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const loggedUser: LocalUser = await NotificationModule.loginUser(email, password);
-      setUser(toLocalUser(loggedUser));
+      const appUser = toLocalUser(loggedUser);
+      setUser(appUser);
+      await checkOnboardingStatus(appUser.id);
       return { success: true };
     } catch (error: unknown) {
       return {
@@ -188,7 +242,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return { success: false, error: error?.message || 'Unable to create account.' };
         }
 
-        setUser(await toAppUser(data.user));
+        const appUser = await toAppUser(data.user);
+        setUser(appUser);
+        // Novo registro: garante que o onboarding é acionado
+        await AsyncStorage.removeItem(`${ONBOARDING_STORAGE_PREFIX}${appUser.id}`);
+        setHasCompletedOnboarding(false);
         return { success: true };
       }
 
@@ -197,7 +255,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const newUser: LocalUser = await NotificationModule.registerUser(name, email, password);
-      setUser(toLocalUser(newUser));
+      const appUser = toLocalUser(newUser);
+      setUser(appUser);
+      // Novo registro: garante que o onboarding é acionado
+      await AsyncStorage.removeItem(`${ONBOARDING_STORAGE_PREFIX}${appUser.id}`);
+      setHasCompletedOnboarding(false);
       return { success: true };
     } catch (error: unknown) {
       return {
@@ -219,11 +281,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Unable to logout:', error);
     } finally {
       setUser(null);
+      setHasCompletedOnboarding(true);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        hasCompletedOnboarding,
+        completeOnboarding,
+        resetOnboarding,
+        login,
+        register,
+        logout,
+      }}>
       {children}
     </AuthContext.Provider>
   );

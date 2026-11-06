@@ -180,12 +180,18 @@ class AppDatabaseHelper(context: Context) :
         timestamp: Long,
         timeFormatted: String,
         dateFormatted: String,
+        accountId: String? = null,
     ): Boolean {
         val targetUserId = userId ?: getActiveUserId() ?: "guest"
         val now = currentIsoTimestamp()
         val values = ContentValues().apply {
             put("id", id)
             put("user_id", targetUserId)
+            if (!accountId.isNullOrBlank()) {
+                put("account_id", accountId)
+            } else {
+                putNull("account_id")
+            }
             put("category_id", category)
             put("amount", amount)
             put("type", type)
@@ -316,7 +322,7 @@ class AppDatabaseHelper(context: Context) :
         val targetUserId = userId ?: getActiveUserId() ?: return transactions
         val cursor = readableDatabase.rawQuery(
             """
-            SELECT id, user_id, category_id, amount, type, merchant, description, date
+            SELECT id, user_id, account_id, category_id, amount, type, merchant, description, date
             FROM $TABLE_TRANSACTIONS
             WHERE user_id = ? AND is_deleted = 0
             ORDER BY date DESC
@@ -327,6 +333,7 @@ class AppDatabaseHelper(context: Context) :
         cursor.use {
             val idIndex = it.getColumnIndexOrThrow("id")
             val userIdIndex = it.getColumnIndexOrThrow("user_id")
+            val accountIdIndex = it.getColumnIndexOrThrow("account_id")
             val categoryIndex = it.getColumnIndexOrThrow("category_id")
             val amountIndex = it.getColumnIndexOrThrow("amount")
             val typeIndex = it.getColumnIndexOrThrow("type")
@@ -339,11 +346,16 @@ class AppDatabaseHelper(context: Context) :
                 val timestamp = parseIsoDate(date)
                 val description = it.getString(descriptionIndex) ?: ""
                 val occurredAt = Date(timestamp)
+                val accountId = if (it.isNull(accountIdIndex)) null else it.getString(accountIdIndex)
 
                 transactions.pushMap(
                     Arguments.createMap().apply {
                         putString("id", it.getString(idIndex))
                         putString("userId", it.getString(userIdIndex))
+                        if (accountId != null) {
+                            putString("accountId", accountId)
+                            putString("account_id", accountId)
+                        }
                         putString("title", it.getString(merchantIndex) ?: "Transaction")
                         putDouble("amount", it.getDouble(amountIndex))
                         putString("type", it.getString(typeIndex))
@@ -374,6 +386,149 @@ class AppDatabaseHelper(context: Context) :
             "id = ? AND user_id = ?",
             arrayOf(id, targetUserId),
         ) > 0
+    }
+
+    // --- ACCOUNTS (CARTEIRAS) ---
+    fun insertAccount(
+        id: String,
+        userId: String?,
+        name: String,
+        type: String,
+        color: String? = null,
+        icon: String? = null,
+        initialBalance: Double = 0.0,
+        isActive: Boolean = true,
+    ): Boolean {
+        val targetUserId = userId ?: getActiveUserId() ?: "guest"
+        val now = currentIsoTimestamp()
+        val values = ContentValues().apply {
+            put("id", id)
+            put("user_id", targetUserId)
+            put("name", name)
+            put("type", type)
+            put("color", color ?: "#10B981")
+            put("icon", icon ?: "wallet")
+            put("initial_balance", initialBalance)
+            put("is_active", if (isActive) 1 else 0)
+            putNull("synced_at")
+            put("updated_at", now)
+            put("is_deleted", 0)
+        }
+        return writableDatabase.insertWithOnConflict(
+            TABLE_ACCOUNTS,
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE,
+        ) != -1L
+    }
+
+    fun updateAccount(
+        id: String,
+        userId: String?,
+        name: String,
+        type: String,
+        color: String? = null,
+        icon: String? = null,
+        initialBalance: Double = 0.0,
+        isActive: Boolean = true,
+    ): Boolean {
+        val targetUserId = userId ?: getActiveUserId() ?: "guest"
+        val now = currentIsoTimestamp()
+        val values = ContentValues().apply {
+            put("name", name)
+            put("type", type)
+            if (color != null) put("color", color)
+            if (icon != null) put("icon", icon)
+            put("initial_balance", initialBalance)
+            put("is_active", if (isActive) 1 else 0)
+            putNull("synced_at")
+            put("updated_at", now)
+        }
+        return writableDatabase.update(
+            TABLE_ACCOUNTS,
+            values,
+            "id = ? AND user_id = ?",
+            arrayOf(id, targetUserId),
+        ) > 0
+    }
+
+    fun deleteAccount(id: String, userId: String?): Boolean {
+        val targetUserId = userId ?: getActiveUserId() ?: return false
+        val now = currentIsoTimestamp()
+        val values = ContentValues().apply {
+            put("is_deleted", 1)
+            putNull("synced_at")
+            put("updated_at", now)
+        }
+        return writableDatabase.update(
+            TABLE_ACCOUNTS,
+            values,
+            "id = ? AND user_id = ?",
+            arrayOf(id, targetUserId),
+        ) > 0
+    }
+
+    fun getAccountsForUser(userId: String?): WritableArray {
+        val accounts = Arguments.createArray()
+        val targetUserId = userId ?: getActiveUserId() ?: return accounts
+        val cursor = readableDatabase.rawQuery(
+            """
+            SELECT id, user_id, name, type, color, icon, initial_balance, is_active, updated_at
+            FROM $TABLE_ACCOUNTS
+            WHERE user_id = ? AND is_deleted = 0
+            ORDER BY updated_at DESC
+            """.trimIndent(),
+            arrayOf(targetUserId),
+        )
+        cursor.use {
+            val idIdx = it.getColumnIndexOrThrow("id")
+            val userIdIdx = it.getColumnIndexOrThrow("user_id")
+            val nameIdx = it.getColumnIndexOrThrow("name")
+            val typeIdx = it.getColumnIndexOrThrow("type")
+            val colorIdx = it.getColumnIndexOrThrow("color")
+            val iconIdx = it.getColumnIndexOrThrow("icon")
+            val balanceIdx = it.getColumnIndexOrThrow("initial_balance")
+            val activeIdx = it.getColumnIndexOrThrow("is_active")
+
+            while (it.moveToNext()) {
+                accounts.pushMap(
+                    Arguments.createMap().apply {
+                        putString("id", it.getString(idIdx))
+                        putString("userId", it.getString(userIdIdx))
+                        putString("user_id", it.getString(userIdIdx))
+                        putString("name", it.getString(nameIdx))
+                        putString("type", it.getString(typeIdx))
+                        putString("color", if (it.isNull(colorIdx)) "#10B981" else it.getString(colorIdx))
+                        putString("icon", if (it.isNull(iconIdx)) "wallet" else it.getString(iconIdx))
+                        putDouble("initialBalance", it.getDouble(balanceIdx))
+                        putDouble("initial_balance", it.getDouble(balanceIdx))
+                        putBoolean("isActive", it.getInt(activeIdx) == 1)
+                        putBoolean("is_active", it.getInt(activeIdx) == 1)
+                    },
+                )
+            }
+        }
+        return accounts
+    }
+
+    fun markAccountsSynced(ids: ReadableArray, userId: String?): Boolean {
+        val targetUserId = userId ?: getActiveUserId() ?: return false
+        val now = currentIsoTimestamp()
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (i in 0 until ids.size()) {
+                val accountId = ids.getString(i) ?: continue
+                val values = ContentValues().apply {
+                    put("synced_at", now)
+                }
+                db.update(TABLE_ACCOUNTS, values, "id = ? AND user_id = ?", arrayOf(accountId, targetUserId))
+            }
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
     }
 
     fun saveBudget(userId: String?, categoryId: String, limitAmount: Double): Boolean {

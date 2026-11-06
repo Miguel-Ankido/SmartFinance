@@ -11,7 +11,7 @@ interface TransactionDetailModalProps {
 }
 
 export default function TransactionDetailModal({ transaction, onClose }: TransactionDetailModalProps) {
-  const { deleteTransaction } = useFinance();
+  const { deleteTransaction, accounts } = useFinance();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [currentTx, setCurrentTx] = useState<Transaction | null>(transaction);
 
@@ -33,18 +33,24 @@ export default function TransactionDetailModal({ transaction, onClose }: Transac
     others: 'Diversos',
   };
 
+  const account = accounts.find(a => a.id === (currentTx.accountId || currentTx.account_id));
+
   const handleDelete = () => {
     Alert.alert(
       'Excluir Transação',
-      `Tem certeza que deseja apagar o registro de "${currentTx.title}"? Esta ação removerá o registro do histórico e atualizará seu saldo.`,
+      `Tem certeza que deseja apagar o registro de "${currentTx.title}"? Esta ação realizará o Soft Delete e atualizará o Supabase.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Excluir',
           style: 'destructive',
           onPress: async () => {
-            await deleteTransaction(currentTx.id);
-            onClose();
+            try {
+              await deleteTransaction(currentTx.id);
+              onClose();
+            } catch (err: any) {
+              Alert.alert('Erro', 'Falha ao excluir transação: ' + err?.message);
+            }
           },
         },
       ]
@@ -83,6 +89,13 @@ export default function TransactionDetailModal({ transaction, onClose }: Transac
               <Text style={styles.label}>Categoria</Text>
               <Text style={styles.value}>{categoryNames[currentTx.category] || 'Diversos'}</Text>
             </View>
+
+            {account && (
+              <View style={styles.infoRow}>
+                <Text style={styles.label}>Carteira / Conta</Text>
+                <Text style={[styles.value, { color: Colors.primary }]}>{account.name}</Text>
+              </View>
+            )}
 
             <View style={styles.infoRow}>
               <Text style={styles.label}>Horário</Text>
@@ -139,7 +152,10 @@ export default function TransactionDetailModal({ transaction, onClose }: Transac
       <EditTransactionModal
         visible={isEditOpen}
         transaction={currentTx}
-        onClose={() => setIsEditOpen(false)}
+        onClose={() => {
+          setIsEditOpen(false);
+          onClose();
+        }}
         onSaved={updated => {
           setCurrentTx(updated);
         }}

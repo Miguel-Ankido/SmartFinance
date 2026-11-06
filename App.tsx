@@ -22,6 +22,7 @@ import { Colors } from './src/theme/colors';
 import { loadAndSyncMonitoredBanks } from './src/services/bankMonitorService';
 
 import AuthScreen from './src/screens/AuthScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import TransactionsScreen from './src/screens/TransactionsScreen';
 import BudgetScreen from './src/screens/BudgetScreen';
@@ -154,7 +155,7 @@ function SwipeableTabNavigator() {
 }
 
 function RootNavigator() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, hasCompletedOnboarding } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
@@ -188,12 +189,18 @@ function RootNavigator() {
   return (
     <FinanceProvider>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        <RootStack.Screen name="MainTabs" component={SwipeableTabNavigator} />
-        {user.role === 'admin' ? (
-          <RootStack.Screen name="AdminDashboard">
-            {({ navigation }) => <AdminDashboardScreen onClose={() => navigation.goBack()} />}
-          </RootStack.Screen>
-        ) : null}
+        {!hasCompletedOnboarding ? (
+          <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
+        ) : (
+          <>
+            <RootStack.Screen name="MainTabs" component={SwipeableTabNavigator} />
+            {user.role === 'admin' ? (
+              <RootStack.Screen name="AdminDashboard">
+                {({ navigation }) => <AdminDashboardScreen onClose={() => navigation.goBack()} />}
+              </RootStack.Screen>
+            ) : null}
+          </>
+        )}
       </RootStack.Navigator>
     </FinanceProvider>
   );

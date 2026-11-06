@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { Colors } from '../theme/colors';
 import { Transaction, TransactionType } from '../types/finance';
 import { useFinance } from '../context/FinanceContext';
-import TransactionDetailModal from '../components/TransactionDetailModal';
+import EditTransactionModal from '../components/EditTransactionModal';
 import AddTransactionModal from '../components/AddTransactionModal';
 
 const MONTH_NAMES = [
@@ -12,7 +12,7 @@ const MONTH_NAMES = [
 ];
 
 export default function TransactionsScreen() {
-  const { transactions } = useFinance();
+  const { transactions, accounts } = useFinance();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [filterMode, setFilterMode] = useState<'MONTH' | 'ALL'>('MONTH');
   const [typeFilter, setTypeFilter] = useState<'ALL' | TransactionType>('ALL');
@@ -25,6 +25,13 @@ export default function TransactionsScreen() {
 
   const now = new Date();
   const isCurrentMonth = currentYear === now.getFullYear() && currentMonthIdx === now.getMonth();
+
+  // Mapa rápido de contas para exibição
+  const accountsMap = useMemo(() => {
+    const map = new Map<string, string>();
+    accounts.forEach(a => map.set(a.id, a.name));
+    return map;
+  }, [accounts]);
 
   // Navegação Temporal
   const handlePrevMonth = () => {
@@ -220,35 +227,43 @@ export default function TransactionsScreen() {
           Object.keys(groupedData).map(dateLabel => (
             <View key={dateLabel} style={styles.dateGroup}>
               <Text style={styles.dateGroupLabel}>{dateLabel}</Text>
-              {groupedData[dateLabel].map(tx => (
-                <TouchableOpacity
-                  key={tx.id}
-                  style={styles.txRow}
-                  activeOpacity={0.7}
-                  onPress={() => setSelectedTx(tx)}>
-                  <View style={styles.txLeft}>
-                    <View style={styles.categorySquircle}>
-                      <Text style={styles.categorySymbol}>•</Text>
+              {groupedData[dateLabel].map(tx => {
+                const accName = (tx.accountId || tx.account_id) ? accountsMap.get((tx.accountId || tx.account_id)!) : null;
+                return (
+                  <TouchableOpacity
+                    key={tx.id}
+                    style={styles.txRow}
+                    activeOpacity={0.7}
+                    onPress={() => setSelectedTx(tx)}>
+                    <View style={styles.txLeft}>
+                      <View style={styles.categorySquircle}>
+                        <Text style={styles.categorySymbol}>•</Text>
+                      </View>
+                      <View style={styles.txInfo}>
+                        <Text style={styles.txTitle}>{tx.title}</Text>
+                        <Text style={styles.txTime}>
+                          {tx.bankName} {accName ? `• ${accName}` : ''} • {tx.timeFormatted}
+                        </Text>
+                      </View>
                     </View>
-                    <View>
-                      <Text style={styles.txTitle}>{tx.title}</Text>
-                      <Text style={styles.txTime}>
-                        {tx.bankName} • {tx.timeFormatted}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.txAmount, tx.type === 'INCOME' && styles.txAmountIncome]}>
-                    {tx.type === 'INCOME' ? '+ ' : '- '}
-                    {tx.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text style={[styles.txAmount, tx.type === 'INCOME' && styles.txAmountIncome]}>
+                      {tx.type === 'INCOME' ? '+ ' : '- '}
+                      {tx.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ))
         )}
       </ScrollView>
 
-      <TransactionDetailModal transaction={selectedTx} onClose={() => setSelectedTx(null)} />
+      {/* Modal de Edição Direta ao Tocar no Card */}
+      <EditTransactionModal
+        transaction={selectedTx}
+        visible={!!selectedTx}
+        onClose={() => setSelectedTx(null)}
+      />
       <AddTransactionModal visible={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} />
     </View>
   );
@@ -358,6 +373,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   txLeft: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
+  txInfo: { flex: 1 },
   categorySquircle: {
     width: 38,
     height: 38,
