@@ -208,12 +208,12 @@ const styles = StyleSheet.create({
   },
   quickBtnText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700' },
   previewCard: {
-    backgroundColor: 'rgba(198, 241, 53, 0.08)',
+    backgroundColor: Colors.primaryMuted,
     padding: 12,
     borderRadius: 10,
     marginBottom: 18,
     borderWidth: 1,
-    borderColor: 'rgba(198, 241, 53, 0.2)',
+    borderColor: 'rgba(168, 85, 247, 0.25)',
   },
   previewCardAlert: {
     backgroundColor: 'rgba(248, 113, 113, 0.1)',
@@ -226,5 +226,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
-  saveBtnText: { color: '#000000', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
+  saveBtnText: { color: '#ffffff', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
 });

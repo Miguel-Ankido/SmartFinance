@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
   averageValue: { color: Colors.textPrimary, fontSize: 13, fontWeight: '800' },
   peakValue: { color: Colors.primary, fontSize: 13, fontWeight: '800' },
   alertBanner: {
-    backgroundColor: 'rgba(198, 241, 53, 0.12)',
+    backgroundColor: Colors.primaryMuted,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,

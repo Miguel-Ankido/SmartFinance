@@ -15,6 +15,7 @@ interface AuthContextData {
   hasCompletedOnboarding: boolean;
   completeOnboarding: () => Promise<void>;
   resetOnboarding: () => Promise<void>;
+  updateUserProfile: (data: { name: string; avatarUrl?: string }) => Promise<{ success: boolean; error?: string }>;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (
     name: string,
@@ -59,6 +60,23 @@ async function fetchProfileRole(authUser: SupabaseAuthUser): Promise<UserRole> {
   }
 }
 
+async function enrichUserProfile(baseUser: User): Promise<User> {
+  try {
+    const cached = await AsyncStorage.getItem(`@SyncPay:user_profile_${baseUser.id}`);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      return {
+        ...baseUser,
+        name: parsed.name || baseUser.name,
+        avatarUrl: parsed.avatarUrl !== undefined ? parsed.avatarUrl : baseUser.avatarUrl,
+      };
+    }
+  } catch {
+    // fallback
+  }
+  return baseUser;
+}
+
 async function toAppUser(authUser: SupabaseAuthUser): Promise<User> {
   const profileRole = await fetchProfileRole(authUser);
   const metadataName = authUser.user_metadata?.display_name ?? authUser.user_metadata?.name;
@@ -67,13 +85,16 @@ async function toAppUser(authUser: SupabaseAuthUser): Promise<User> {
       ? metadataName.trim()
       : authUser.email?.split('@')[0] ?? 'SyncPay User';
 
-  return {
+  const base: User = {
     id: authUser.id,
     name,
     email: authUser.email ?? '',
     createdAt: authUser.created_at ? new Date(authUser.created_at).getTime() : Date.now(),
     role: profileRole,
+    avatarUrl: authUser.user_metadata?.avatar_url as string | undefined,
   };
+
+  return enrichUserProfile(base);
 }
 
 function toLocalUser(user: LocalUser): User {
@@ -115,6 +136,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user?.id]);
 
+  const updateUserProfile = useCallback(
+    async (data: { name: string; avatarUrl?: string }): Promise<{ success: boolean; error?: string }> => {
+      const trimmedName = data.name.trim();
+      if (!trimmedName) {
+        return { success: false, error: 'O nome não pode ficar em branco.' };
+      }
+
+      if (!user) {
+        return { success: false, error: 'Usuário não autenticado.' };
+      }
+
+      try {
+        const updatedUser: User = {
+          ...user,
+          name: trimmedName,
+          avatarUrl: data.avatarUrl?.trim() || undefined,
+        };
+
+        setUser(updatedUser);
+
+        await AsyncStorage.setItem(
+          `@SyncPay:user_profile_${user.id}`,
+          JSON.stringify({ name: updatedUser.name, avatarUrl: updatedUser.avatarUrl }),
+        );
+
+        if (isSupabaseConfigured && supabase) {
+          try {
+            await supabase.auth.updateUser({
+              data: {
+                name: updatedUser.name,
+                display_name: updatedUser.name,
+                avatar_url: updatedUser.avatarUrl,
+              },
+            });
+
+            await supabase
+              .from('profiles')
+              .update({
+                name: updatedUser.name,
+                avatar_url: updatedUser.avatarUrl,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', user.id);
+          } catch (cloudErr) {
+            console.log('[AuthContext] Perfil salvo localmente (nuvem offline):', cloudErr);
+          }
+        }
+
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'Erro ao atualizar perfil.' };
+      }
+    },
+    [user],
+  );
+
   useEffect(() => {
     if (user?.id) {
       checkOnboardingStatus(user.id);
@@ -128,7 +205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (NotificationModule?.getActiveUser) {
         const activeUser: LocalUser | null = await NotificationModule.getActiveUser();
         if (activeUser?.id) {
-          const appUser = toLocalUser(activeUser);
+          const appUser = await enrichUserProfile(toLocalUser(activeUser));
           setUser(appUser);
           await checkOnboardingStatus(appUser.id);
         }
@@ -293,6 +370,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         hasCompletedOnboarding,
         completeOnboarding,
         resetOnboarding,
+        updateUserProfile,
         login,
         register,
         logout,

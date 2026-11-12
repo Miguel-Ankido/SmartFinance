@@ -6,4 +6,5 @@ export interface User {
   email: string;
   createdAt: number;
   role: UserRole;
+  avatarUrl?: string;
 }

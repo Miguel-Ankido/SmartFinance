@@ -207,13 +207,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   tagBadge: {
-    backgroundColor: 'rgba(198, 241, 53, 0.12)',
+    backgroundColor: Colors.primaryMuted,
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 8,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: 'rgba(198, 241, 53, 0.25)',
+    borderColor: 'rgba(168, 85, 247, 0.25)',
   },
   tagBadgeText: {
     color: Colors.primary,
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(198, 241, 53, 0.3)',
+    borderColor: 'rgba(168, 85, 247, 0.3)',
     marginBottom: 14,
   },
   permissionCardActive: {
@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 10,
-    backgroundColor: 'rgba(198, 241, 53, 0.12)',
+    backgroundColor: Colors.primaryMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   finishButtonText: {
-    color: '#000000',
+    color: '#ffffff',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.8,

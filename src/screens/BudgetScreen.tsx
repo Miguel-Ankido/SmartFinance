@@ -14,13 +14,13 @@ export default function BudgetScreen() {
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (circumference * Math.min(100, monthlyBudget.percentage)) / 100;
 
-  // Cor consolidada do gauge baseada nos mesmos limiares (<75% Verde, 75%-90% Laranja/Amarelo, >90% Vermelho)
+  // Cor consolidada do gauge baseada nos limiares (<75% Seguro/Verde, 75%-90% Alerta/Laranja, >90% Crítico/Vermelho)
   const consolidatedColor =
     monthlyBudget.percentage > 90
       ? '#ef4444'
       : monthlyBudget.percentage >= 75
       ? '#f59e0b'
-      : '#c6f135';
+      : '#10b981';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -90,14 +90,14 @@ export default function BudgetScreen() {
         const pct = hasLimit ? Math.round((item.spent / item.budgetLimit) * 100) : 0;
 
         // Regra de Cores e Alertas do Épico 2:
-        // - Verde: < 75%
+        // - Verde Seguro: < 75%
         // - Amarelo/Laranja: Entre 75% e 90%
         // - Vermelho: > 90%
-        let barColor = '#c6f135'; // Verde neon
+        let barColor = '#10b981'; // Verde seguro suave
         let statusBadge = {
           text: 'NORMAL',
-          textColor: '#c6f135',
-          bgColor: 'rgba(198, 241, 53, 0.12)',
+          textColor: '#10b981',
+          bgColor: 'rgba(16, 185, 129, 0.12)',
         };
 
         if (!hasLimit) {

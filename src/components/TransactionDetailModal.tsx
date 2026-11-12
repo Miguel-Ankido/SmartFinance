@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   tagBank: {
     color: Colors.primary,
-    backgroundColor: 'rgba(198, 241, 53, 0.12)',
+    backgroundColor: Colors.primaryMuted,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,

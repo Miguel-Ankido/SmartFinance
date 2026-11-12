@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
   },
   previewTitle: { color: Colors.textSecondary, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
   countBadge: {
-    backgroundColor: 'rgba(198, 241, 53, 0.12)',
+    backgroundColor: Colors.primaryMuted,
     color: Colors.primary,
     fontSize: 10,
     fontWeight: '800',

@@ -135,3 +135,15 @@ export function requestNotificationPermission(): void {
     NotificationModule?.requestNotificationPermission?.();
   }
 }
+
+export async function postLocalNotification(title: string, message: string): Promise<boolean> {
+  if (Platform.OS !== 'android' || !NotificationModule?.postLocalNotification) {
+    return false;
+  }
+  try {
+    return await NotificationModule.postLocalNotification(title, message);
+  } catch (err) {
+    console.warn('[NotificationListener] Falha ao enviar notificação local:', err);
+    return false;
+  }
+}

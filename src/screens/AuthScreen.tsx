@@ -16,7 +16,7 @@ import {
 import { Colors } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 
-const LOGO_IMG = require('../assets/SyncPayBlack.jpg');
+const LOGO_IMG = require('../assets/logo.png');
 
 export default function AuthScreen() {
   const { login, register } = useAuth();
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   modeButtonTextActive: {
-    color: '#000000',
+    color: '#ffffff',
     fontWeight: '800',
   },
   card: {
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   actionButtonText: {
-    color: '#000000',
+    color: '#ffffff',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.8,

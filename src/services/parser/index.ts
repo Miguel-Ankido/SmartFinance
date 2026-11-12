@@ -11,7 +11,7 @@ const parsers: Record<string, BankParser> = {
   'br.com.intermedium': new InterParser(),
 };
 
-const SECURITY_BLACKLIST = [
+export const SECURITY_BLACKLIST = [
   'codigo',
   'token',
   'senha',
@@ -20,6 +20,63 @@ const SECURITY_BLACKLIST = [
   'chave de seguranca',
   'autenticacao',
   '2fa',
+];
+
+export const PROMOTIONAL_BLACKLIST = [
+  'promocao',
+  'promocoes',
+  'oferta',
+  'ofertas',
+  'desconto',
+  'descontos',
+  'cashback',
+  'de volta',
+  'cupom',
+  'cupons',
+  'aproveite',
+  'aproveitar',
+  'garanta',
+  'imperdivel',
+  'imperdiveis',
+  'emprestimo',
+  'emprestimos',
+  'pre-aprovado',
+  'pre aprovado',
+  'limite aumentado',
+  'aumento de limite',
+  'limite extra',
+  'aumente seu limite',
+  'rendimento',
+  'rendeu',
+  'investimento',
+  'investimentos',
+  'cdi',
+  'cripto',
+  'nucoin',
+  'bonus',
+  'sorteio',
+  'sorteios',
+  'premio',
+  'premios',
+  'indique e ganhe',
+  'indique um amigo',
+  'convide amigos',
+  'seguro celular',
+  'seguro de vida',
+  'fatura fechada',
+  'fatura do seu cartao fechou',
+  'fatura fechou',
+  'fatura disponivel',
+  'sua fatura vence',
+  'lembrete de fatura',
+  'novidade no app',
+  'conheca as vantagens',
+  'conheca o novo',
+  'experimente o novo',
+  'compre com desconto',
+  'parcelamento de fatura',
+  'renegocie sua divida',
+  'renegociacao',
 ];
 
 function normalizeText(value: string): string {
@@ -90,6 +147,10 @@ export function parseNotification(
   const notificationContent = normalizeText(`${title} ${text}`);
 
   if (SECURITY_BLACKLIST.some(term => notificationContent.includes(term))) {
+    return null;
+  }
+
+  if (PROMOTIONAL_BLACKLIST.some(term => notificationContent.includes(term))) {
     return null;
   }
 

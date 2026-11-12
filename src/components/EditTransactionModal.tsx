@@ -14,6 +14,7 @@ import {
 import { Colors } from '../theme/colors';
 import { Transaction, CategoryId, TransactionType } from '../types/finance';
 import { useFinance } from '../context/FinanceContext';
+import { BANK_CONFIGS } from '../utils/bankColors';
 
 interface EditTransactionModalProps {
   transaction: Transaction | null;
@@ -21,8 +22,6 @@ interface EditTransactionModalProps {
   onClose: () => void;
   onSaved?: (updated: Transaction) => void;
 }
-
-const AVAILABLE_BANKS = ['Nubank', 'PicPay', 'Banco Inter', 'Itaú', 'Bradesco', 'Santander', 'C6 Bank', 'Dinheiro'];
 
 const CATEGORY_OPTIONS: { id: CategoryId; label: string; color: string }[] = [
   { id: 'food', label: 'Alimentação', color: Colors.catFood },
@@ -286,7 +285,11 @@ export default function EditTransactionModal({
                         ]}
                         onPress={() => {
                           setSelectedAccountId(acc.id);
-                          setSelectedBank(acc.name);
+                          if (acc.bank) {
+                            setSelectedBank(acc.bank);
+                          } else {
+                            setSelectedBank(acc.name);
+                          }
                         }}>
                         <View style={[styles.accountDot, { backgroundColor: acc.color || Colors.primary }]} />
                         <Text style={[styles.accountChipText, isSelected && styles.accountChipTextActive]}>
@@ -322,19 +325,39 @@ export default function EditTransactionModal({
               })}
             </View>
 
-            {/* Instituição Bancária */}
+            {/* Instituição Bancária com Cores da Marca */}
             <Text style={styles.fieldLabel}>INSTITUIÇÃO BANCÁRIA</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalChips}>
-              {AVAILABLE_BANKS.map(bank => (
-                <TouchableOpacity
-                  key={bank}
-                  style={[styles.bankChip, selectedBank === bank && styles.bankChipActive]}
-                  onPress={() => setSelectedBank(bank)}>
-                  <Text style={[styles.bankChipText, selectedBank === bank && styles.bankChipTextActive]}>
-                    {bank}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {BANK_CONFIGS.map(bank => {
+                const isSelected = selectedBank === bank.name;
+                return (
+                  <TouchableOpacity
+                    key={bank.name}
+                    style={[
+                      styles.bankChip,
+                      isSelected && {
+                        backgroundColor: bank.color,
+                        borderColor: bank.color,
+                      },
+                    ]}
+                    onPress={() => setSelectedBank(bank.name)}>
+                    <View
+                      style={[
+                        styles.bankDot,
+                        { backgroundColor: bank.color },
+                        isSelected && { backgroundColor: bank.textColor },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.bankChipText,
+                        isSelected && { color: bank.textColor, fontWeight: '800' },
+                      ]}>
+                      {bank.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
 
             {/* Observação */}
@@ -441,7 +464,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   currencyPrefix: { color: Colors.expense, fontSize: 22, fontWeight: '800', marginRight: 8 },
-  currencyPrefixIncome: { color: Colors.primary },
+  currencyPrefixIncome: { color: Colors.income },
   amountInput: { flex: 1, height: 50, color: Colors.textPrimary, fontSize: 22, fontWeight: '800' },
   textInput: {
     backgroundColor: Colors.surfaceCard,
@@ -489,17 +512,23 @@ const styles = StyleSheet.create({
 
   /* Bank chips */
   bankChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.surfaceCard,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 20,
     marginRight: 8,
     borderWidth: 1,
     borderColor: Colors.border,
+    gap: 6,
   },
-  bankChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  bankDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
   bankChipText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
-  bankChipTextActive: { color: '#000000', fontWeight: '800' },
 
   /* Categorias grid */
   categoriesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -528,7 +557,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   saveButtonDisabled: { opacity: 0.6 },
-  saveButtonText: { color: '#000000', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
+  saveButtonText: { color: '#ffffff', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
   deleteButton: {
     backgroundColor: 'rgba(248, 113, 113, 0.12)',
     paddingVertical: 14,

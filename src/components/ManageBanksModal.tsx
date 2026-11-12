@@ -244,5 +244,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 18,
   },
-  doneBtnText: { color: '#000000', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
+  doneBtnText: { color: '#ffffff', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
 });

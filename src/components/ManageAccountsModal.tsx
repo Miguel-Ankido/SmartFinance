@@ -14,6 +14,7 @@ import {
 import { Colors } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { Account, AccountType } from '../types/finance';
+import { BANK_CONFIGS, getBankColor } from '../utils/bankColors';
 
 interface ManageAccountsModalProps {
   visible: boolean;
@@ -28,10 +29,10 @@ const ACCOUNT_TYPES: { type: AccountType; label: string; icon: string }[] = [
 ];
 
 const COLOR_PALETTE = [
-  '#c6f135', // Neon Verde
+  '#a855f7', // Roxo (Identidade da Marca)
+  '#7c3aed', // Roxo Escuro
   '#34d399', // Esmeralda
   '#38bdf8', // Azul Claro
-  '#a855f7', // Roxo
   '#f59e0b', // Âmbar
   '#f43f5e', // Rosa/Vermelho
   '#ffffff', // Branco
@@ -45,16 +46,18 @@ export default function ManageAccountsModal({ visible, onClose }: ManageAccounts
 
   // Campos do formulário
   const [name, setName] = useState('');
+  const [selectedBank, setSelectedBank] = useState<string | undefined>(undefined);
   const [type, setType] = useState<AccountType>('CHECKING');
-  const [color, setColor] = useState('#c6f135');
+  const [color, setColor] = useState('#a855f7');
   const [balanceRaw, setBalanceRaw] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
   const handleOpenCreate = () => {
     setEditingAccount(null);
     setName('');
+    setSelectedBank(undefined);
     setType('CHECKING');
-    setColor('#c6f135');
+    setColor('#a855f7');
     setBalanceRaw('');
     setErrorMessage('');
     setIsFormOpen(true);
@@ -63,8 +66,9 @@ export default function ManageAccountsModal({ visible, onClose }: ManageAccounts
   const handleOpenEdit = (acc: Account) => {
     setEditingAccount(acc);
     setName(acc.name);
+    setSelectedBank(acc.bank);
     setType(acc.type);
-    setColor(acc.color || '#c6f135');
+    setColor(acc.color || '#a855f7');
     const initialBal = acc.initialBalance ?? acc.initial_balance ?? 0;
     setBalanceRaw(initialBal > 0 ? initialBal.toString() : '');
     setErrorMessage('');
@@ -74,6 +78,7 @@ export default function ManageAccountsModal({ visible, onClose }: ManageAccounts
   const handleCloseForm = () => {
     setIsFormOpen(false);
     setEditingAccount(null);
+    setSelectedBank(undefined);
     setErrorMessage('');
   };
 
@@ -94,6 +99,7 @@ export default function ManageAccountsModal({ visible, onClose }: ManageAccounts
           name: trimmedName,
           type,
           color,
+          bank: selectedBank,
           initialBalance: parsedBalance,
           initial_balance: parsedBalance,
         });
@@ -102,6 +108,7 @@ export default function ManageAccountsModal({ visible, onClose }: ManageAccounts
           name: trimmedName,
           type,
           color,
+          bank: selectedBank,
           icon: ACCOUNT_TYPES.find(t => t.type === type)?.icon || '🏦',
           initialBalance: parsedBalance,
           initial_balance: parsedBalance,
@@ -202,6 +209,51 @@ export default function ManageAccountsModal({ visible, onClose }: ManageAccounts
                 onChangeText={setName}
               />
 
+              {/* Vinculação de Banco / Método */}
+              <Text style={styles.inputLabel}>VINCULAR A UM BANCO / MÉTODO (OPCIONAL)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bankSelectRow}>
+                <TouchableOpacity
+                  style={[styles.bankSelectChip, !selectedBank && styles.bankSelectChipActive]}
+                  onPress={() => setSelectedBank(undefined)}>
+                  <Text style={[styles.bankSelectChipText, !selectedBank && styles.bankSelectChipTextActive]}>
+                    Nenhum / Outro
+                  </Text>
+                </TouchableOpacity>
+                {BANK_CONFIGS.map(b => {
+                  const isSelected = selectedBank === b.name;
+                  return (
+                    <TouchableOpacity
+                      key={b.name}
+                      style={[
+                        styles.bankSelectChip,
+                        isSelected && { backgroundColor: b.color, borderColor: b.color },
+                      ]}
+                      onPress={() => {
+                        setSelectedBank(b.name);
+                        if (!name || BANK_CONFIGS.some(bc => bc.name === name)) {
+                          setName(b.name);
+                        }
+                        setColor(b.color);
+                      }}>
+                      <View
+                        style={[
+                          styles.bankSelectDot,
+                          { backgroundColor: b.color },
+                          isSelected && { backgroundColor: b.textColor },
+                        ]}
+                      />
+                      <Text
+                        style={[
+                          styles.bankSelectChipText,
+                          isSelected && { color: b.textColor, fontWeight: '800' },
+                        ]}>
+                        {b.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
               {/* Tipo de Conta */}
               <Text style={styles.inputLabel}>TIPO DE CONTA</Text>
               <View style={styles.typeGrid}>
@@ -293,6 +345,20 @@ export default function ManageAccountsModal({ visible, onClose }: ManageAccounts
                         <Text style={styles.accountName}>{acc.name}</Text>
                         <View style={styles.typeBadgeRow}>
                           <Text style={styles.accountTypeBadge}>{getTypeName(acc.type)}</Text>
+                          {acc.bank ? (
+                            <View
+                              style={[
+                                styles.bankBadge,
+                                {
+                                  backgroundColor: getBankColor(acc.bank).color + '22',
+                                  borderColor: getBankColor(acc.bank).color,
+                                },
+                              ]}>
+                              <Text style={[styles.bankBadgeText, { color: getBankColor(acc.bank).color }]}>
+                                🏦 {acc.bank}
+                              </Text>
+                            </View>
+                          ) : null}
                           {bal > 0 ? (
                             <Text style={styles.initialBalanceText}>
                               Inicial: {bal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -510,7 +576,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   saveBtnText: {
-    color: '#070b0e',
+    color: '#ffffff',
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -618,5 +684,49 @@ const styles = StyleSheet.create({
   },
   actionIconDeleteText: {
     fontSize: 13,
+  },
+  bankSelectRow: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  bankSelectChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 6,
+  },
+  bankSelectChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.surfaceHover,
+  },
+  bankSelectDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  bankSelectChipText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  bankSelectChipTextActive: {
+    color: Colors.textPrimary,
+    fontWeight: '700',
+  },
+  bankBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  bankBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
 });

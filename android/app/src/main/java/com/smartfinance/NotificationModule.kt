@@ -1,5 +1,8 @@
 package com.smartfinance
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Intent
 import android.os.Build
@@ -7,6 +10,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
@@ -444,6 +448,67 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("LOGOUT_ERROR", e.message)
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channelId = "syncpay_captured_channel"
+            val channelName = "Transações Capturadas"
+            val channelDescription = "Notificações de confirmação de transações capturadas pelo SyncPay"
+            val importance = NotificationManager.IMPORTANCE_HIGH
+            val channel = NotificationChannel(channelId, channelName, importance).apply {
+                description = channelDescription
+                enableVibration(true)
+            }
+            val notificationManager = reactContext.getSystemService(NotificationManager::class.java)
+            notificationManager?.createNotificationChannel(channel)
+        }
+    }
+
+    @ReactMethod
+    fun postLocalNotification(title: String, message: String, promise: Promise) {
+        try {
+            createNotificationChannel()
+
+            val intent = Intent(reactContext, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pendingIntent = PendingIntent.getActivity(reactContext, 0, intent, pendingIntentFlags)
+
+            val channelId = "syncpay_captured_channel"
+            val builder = NotificationCompat.Builder(reactContext, channelId)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+
+            val notificationManager = NotificationManagerCompat.from(reactContext)
+            val notificationId = (System.currentTimeMillis() % 100000).toInt()
+            notificationManager.notify(notificationId, builder.build())
+
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(MODULE_NAME, "Erro ao disparar notificação local: ${e.message}", e)
+            promise.reject("NOTIFICATION_POST_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun areNotificationsEnabled(promise: Promise) {
+        try {
+            val enabled = NotificationManagerCompat.from(reactContext).areNotificationsEnabled()
+            promise.resolve(enabled)
+        } catch (e: Exception) {
+            promise.resolve(false)
         }
     }
 

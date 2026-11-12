@@ -10,6 +10,7 @@ export interface Account {
   type: AccountType;
   color?: string;
   icon?: string;
+  bank?: string;
   initialBalance?: number;
   initial_balance?: number;
   isActive?: boolean;

@@ -83,7 +83,7 @@ export default function HomeScreen({ navigation }: any) {
               const x = 12 + index * 38;
               const barHeight = d.height;
               const y = 95 - barHeight;
-              const barColor = d.isToday ? Colors.primary : d.isPeak ? '#5a8a1a' : '#1b2a32';
+              const barColor = d.isToday ? Colors.primary : d.isPeak ? Colors.primaryDark : '#1b2a32';
               const label = formatCompact(d.amount);
               return (
                 <React.Fragment key={d.dayName}>
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   daysRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 8 },
   dayText: { color: Colors.textMuted, fontSize: 12, fontWeight: '600' },
   activeDayText: { color: Colors.primary, fontWeight: '800' },
-  peakDayText: { color: '#5a8a1a', fontWeight: '800' },
+  peakDayText: { color: Colors.primaryLight, fontWeight: '800' },
   transactionsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 10,
-    backgroundColor: '#242a18',
+    backgroundColor: Colors.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -234,5 +234,5 @@ const styles = StyleSheet.create({
   txTitle: { color: Colors.textPrimary, fontSize: 14, fontWeight: '600' },
   txTime: { color: Colors.textSecondary, fontSize: 11, marginTop: 3 },
   txAmount: { color: Colors.textPrimary, fontSize: 15, fontWeight: '700' },
-  txAmountIncome: { color: Colors.primary },
+  txAmountIncome: { color: Colors.income },
 });

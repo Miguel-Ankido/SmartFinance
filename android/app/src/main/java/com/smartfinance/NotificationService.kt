@@ -30,6 +30,23 @@ class NotificationService : NotificationListenerService() {
             "código", "codigo", "token", "senha", "verificação",
             "verificacao", "segurança", "seguranca", "chave de segurança"
         )
+
+        // Blacklist de promoções, ofertas e propagandas bancárias
+        private val PROMOTIONAL_BLACKLIST = listOf(
+            "promoção", "promocao", "oferta", "ofertas", "desconto", "descontos",
+            "cashback", "de volta", "cupom", "cupons", "aproveite", "aproveitar",
+            "garanta", "imperdível", "imperdivel", "empréstimo", "emprestimo",
+            "pré-aprovado", "pre-aprovado", "pré aprovado", "pre aprovado",
+            "limite extra", "aumento de limite", "aumente seu limite", "rendimento",
+            "rendeu", "investimento", "investimentos", "cdi", "cripto", "nucoin",
+            "bônus", "bonus", "sorteio", "sorteios", "prêmio", "premio",
+            "indique e ganhe", "indique um amigo", "convide amigos", "seguro celular",
+            "seguro de vida", "fatura fechada", "fatura do seu cartão fechou",
+            "fatura do seu cartao fechou", "fatura fechou", "fatura disponível",
+            "fatura disponivel", "sua fatura vence", "lembrete de fatura",
+            "novidade no app", "conheça as vantagens", "conheca as vantagens",
+            "compre com desconto", "renegocie sua dívida", "renegocie sua divida"
+        )
     }
 
     override fun onListenerConnected() {
@@ -74,6 +91,7 @@ class NotificationService : NotificationListenerService() {
         val currentActive = activePackages
         val isAllowed = currentActive.contains(packageName) ||
                         currentActive.contains(originalPackageName) ||
+                        (BuildConfig.DEBUG && originalPackageName == "com.android.shell") ||
                         (originalPackageName == "com.android.shell" && currentActive.contains("com.android.shell"))
 
         if (!isAllowed) {
@@ -89,7 +107,13 @@ class NotificationService : NotificationListenerService() {
             return
         }
 
-        // 3. Despacha para o JavaScript
+        // 3. Blacklist de promoções, ofertas e propagandas bancárias
+        if (PROMOTIONAL_BLACKLIST.any { combinedContent.contains(it) }) {
+            Log.d(TAG, "Notificação descartada: notificação promocional/oferta bancária detectada ($combinedContent)")
+            return
+        }
+
+        // 4. Despacha para o JavaScript
         Log.i(TAG, "Despachando notificação para o JS: pkg=$packageName, title=$rawTitle, text=$rawText")
         NotificationModule.sendEventToJS(packageName, rawTitle, rawText, sbn.postTime)
     }

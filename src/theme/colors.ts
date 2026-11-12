@@ -6,9 +6,12 @@ export const Colors = {
   surfaceLight: '#1b2328',
   border: '#1f2d37',
 
-  // Acentos do protótipo
-  primary: '#c6f135', // Verde-limão neon
-  primaryMuted: 'rgba(198, 241, 53, 0.15)',
+  // Acentos da marca (Tom Arroxado da Logo)
+  primary: '#a855f7', // Roxo vibrante da logo
+  primaryMuted: 'rgba(168, 85, 247, 0.15)',
+  primaryDark: '#7c3aed',
+  primaryLight: '#c084fc',
+  primaryGlow: 'rgba(168, 85, 247, 0.25)',
   
   income: '#34d399',
   expense: '#f87171',

@@ -110,4 +110,86 @@ describe('parseNotification', () => {
       ),
     ).toBeNull();
   });
+
+  describe('Promotional, Marketing & Non-Transaction notifications filtering', () => {
+    it('discards PicPay cashback and promotion notifications', () => {
+      expect(
+        parseNotification(
+          'com.picpay',
+          'PicPay',
+          'Você ganhou R$ 10,00 de cashback! Aproveite no PicPay Shop.',
+        ),
+      ).toBeNull();
+
+      expect(
+        parseNotification(
+          'com.picpay',
+          'Promoção Imperdível',
+          'Ganhe até R$ 20 de volta comprando hoje!',
+        ),
+      ).toBeNull();
+    });
+
+    it('discards loan and pre-approved limit offers', () => {
+      expect(
+        parseNotification(
+          'com.nu.production',
+          'Nubank',
+          'Empréstimo pré-aprovado de R$ 5.000,00 liberado para você. Aproveite!',
+        ),
+      ).toBeNull();
+
+      expect(
+        parseNotification(
+          'br.com.intermedium',
+          'Banco Inter',
+          'Você tem limite extra pré-aprovado no cartão de crédito.',
+        ),
+      ).toBeNull();
+    });
+
+    it('discards invoice statements (fatura fechada)', () => {
+      expect(
+        parseNotification(
+          'com.nu.production',
+          'Nubank',
+          'Sua fatura fechou no valor de R$ 1.250,00. Pague até o vencimento.',
+        ),
+      ).toBeNull();
+
+      expect(
+        parseNotification(
+          'com.picpay',
+          'PicPay Card',
+          'A sua fatura do cartão fechou. Confira o boleto no app.',
+        ),
+      ).toBeNull();
+    });
+
+    it('discards coupons, discounts, and rewards campaigns', () => {
+      expect(
+        parseNotification(
+          'com.picpay',
+          'Cupom de desconto',
+          'Use o cupom PIC10 e ganhe 10% de desconto na sua próxima compra.',
+        ),
+      ).toBeNull();
+
+      expect(
+        parseNotification(
+          'br.com.intermedium',
+          'Inter Shop',
+          'Ofertas especiais de até 50% off com cashback direto na conta!',
+        ),
+      ).toBeNull();
+
+      expect(
+        parseNotification(
+          'com.nu.production',
+          'Nubank',
+          'Indique um amigo e concorra a prêmios exclusivos neste mês.',
+        ),
+      ).toBeNull();
+    });
+  });
 });

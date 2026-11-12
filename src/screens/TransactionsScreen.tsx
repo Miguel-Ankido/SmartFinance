@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
   monthDisplayCenter: { alignItems: 'center' },
   monthYearText: { color: Colors.textPrimary, fontSize: 16, fontWeight: '800' },
   currentMonthBadge: {
-    backgroundColor: 'rgba(198, 241, 53, 0.12)',
+    backgroundColor: Colors.primaryMuted,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 10,
-    backgroundColor: '#242a18',
+    backgroundColor: Colors.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
   txTitle: { color: Colors.textPrimary, fontSize: 14, fontWeight: '600' },
   txTime: { color: Colors.textSecondary, fontSize: 11, marginTop: 3 },
   txAmount: { color: Colors.textPrimary, fontSize: 15, fontWeight: '700' },
-  txAmountIncome: { color: Colors.primary },
+  txAmountIncome: { color: Colors.income },
   emptyState: {
     backgroundColor: Colors.surfaceCard,
     padding: 32,
@@ -400,13 +400,13 @@ const styles = StyleSheet.create({
   emptyTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '800' },
   emptySubtitle: { color: Colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: 4, lineHeight: 18 },
   emptyAddBtn: {
-    backgroundColor: 'rgba(198, 241, 53, 0.12)',
+    backgroundColor: Colors.primaryMuted,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 10,
     marginTop: 16,
     borderWidth: 1,
-    borderColor: 'rgba(198, 241, 53, 0.3)',
+    borderColor: 'rgba(168, 85, 247, 0.3)',
   },
   emptyAddBtnText: { color: Colors.primary, fontSize: 12, fontWeight: '800' },
 });

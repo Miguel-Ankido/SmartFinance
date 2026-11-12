@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, NativeModules } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, NativeModules, Image, Switch } from 'react-native';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
 import { Colors } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +9,7 @@ import type { RootStackParamList } from '../types/navigation';
 import ManageBanksModal from '../components/ManageBanksModal';
 import ManageAccountsModal from '../components/ManageAccountsModal';
 import ExportReportModal from '../components/ExportReportModal';
+import EditProfileModal from '../components/EditProfileModal';
 import {
   loadAndSyncMonitoredBanks,
   saveAndSyncMonitoredBanks,
@@ -20,11 +21,19 @@ export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const { user, logout, resetOnboarding } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const { hasPermission, requestPermission, transactions, accounts } = useFinance();
+  const {
+    hasPermission,
+    requestPermission,
+    transactions,
+    accounts,
+    isCaptureNotificationEnabled,
+    setCaptureNotificationEnabled,
+  } = useFinance();
   const [banks, setBanks] = useState<MonitoredBank[]>([]);
   const [isManageBanksOpen, setIsManageBanksOpen] = useState(false);
   const [isManageAccountsOpen, setIsManageAccountsOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
   const loadMonitoredBanks = useCallback(async () => {
     try {
@@ -98,9 +107,29 @@ export default function ProfileScreen() {
 
       {/* Card Principal do Usuário */}
       <View style={styles.userCard}>
-        <View style={styles.avatarLarge}>
-          <Text style={styles.avatarInitialText}>{userInitial}</Text>
-        </View>
+        <TouchableOpacity
+          style={styles.editProfileBtn}
+          activeOpacity={0.7}
+          onPress={() => setIsEditProfileOpen(true)}
+          accessibilityLabel="Editar Perfil">
+          <Text style={styles.editProfileIcon}>✏️</Text>
+        </TouchableOpacity>
+
+        {user?.avatarUrl ? (
+          user.avatarUrl.startsWith('http://') || user.avatarUrl.startsWith('https://') ? (
+            <View style={styles.avatarLargeImageWrapper}>
+              <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
+            </View>
+          ) : (
+            <View style={styles.avatarLarge}>
+              <Text style={styles.avatarEmojiText}>{user.avatarUrl}</Text>
+            </View>
+          )
+        ) : (
+          <View style={styles.avatarLarge}>
+            <Text style={styles.avatarInitialText}>{userInitial}</Text>
+          </View>
+        )}
         <Text style={styles.userName}>{user?.name || 'Usuário SmartFinance'}</Text>
         <Text style={styles.userEmail}>{user?.email || 'usuario@smartfinance.app'}</Text>
 
@@ -159,6 +188,27 @@ export default function ProfileScreen() {
             {hasPermission ? 'ATIVO' : 'HABILITAR'}
           </Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Alertas e Notificações do Próprio SyncPay */}
+      <View style={styles.optionCard}>
+        <View style={styles.optionLeft}>
+          <View style={styles.optionTitleRow}>
+            <Text style={styles.optionTitle}>Notificações do SyncPay</Text>
+            <Text style={styles.badgeHint}>CONFIRMAÇÃO 🔔</Text>
+          </View>
+          <Text style={styles.optionSubtitle}>
+            {isCaptureNotificationEnabled
+              ? 'Receber notificação quando o app registrar um gasto'
+              : 'Alertas de transações capturadas desativados'}
+          </Text>
+        </View>
+        <Switch
+          value={isCaptureNotificationEnabled}
+          onValueChange={setCaptureNotificationEnabled}
+          trackColor={{ false: '#1c2830', true: Colors.primaryMuted }}
+          thumbColor={isCaptureNotificationEnabled ? Colors.primary : '#4b5b65'}
+        />
       </View>
 
       {/* Bancos Monitorados */}
@@ -257,6 +307,11 @@ export default function ProfileScreen() {
         userName={user?.name}
         onClose={() => setIsExportModalOpen(false)}
       />
+
+      <EditProfileModal
+        visible={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+      />
     </ScrollView>
   );
 }
@@ -275,6 +330,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: 24,
+    position: 'relative',
+  },
+  editProfileBtn: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.surface,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  editProfileIcon: {
+    fontSize: 14,
   },
   avatarLarge: {
     width: 64,
@@ -284,6 +357,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  avatarLargeImageWrapper: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 32,
+  },
+  avatarEmojiText: {
+    fontSize: 30,
   },
   avatarInitialText: { color: '#000000', fontSize: 26, fontWeight: '900' },
   userName: { color: Colors.textPrimary, fontSize: 20, fontWeight: '800' },
@@ -335,14 +425,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
   },
-  pillActive: { backgroundColor: 'rgba(198, 241, 53, 0.12)', borderColor: Colors.primary },
+  pillActive: { backgroundColor: Colors.primaryMuted, borderColor: Colors.primary },
   pillInactive: { backgroundColor: 'rgba(248, 113, 113, 0.12)', borderColor: Colors.expense },
   pillText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, color: Colors.expense },
   pillTextActive: { color: Colors.primary },
   optionValueText: { color: Colors.primary, fontSize: 12, fontWeight: '700' },
   optionSecureText: { color: Colors.income, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
   exportBadge: {
-    color: '#000000',
+    color: '#ffffff',
     backgroundColor: Colors.primary,
     fontSize: 10,
     fontWeight: '800',

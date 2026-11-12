@@ -19,8 +19,10 @@ import { syncService, encodeBankDescription, decodeBankDescription } from '../se
 import {
   subscribeToBankNotifications,
   generateUuid,
+  postLocalNotification,
   type CapturedBankTransaction,
 } from '../services/notificationListener';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { NotificationModule } = NativeModules;
 
@@ -61,6 +63,8 @@ interface FinanceContextData {
   updateAccount: (account: Account) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
   loadStoredAccounts: () => Promise<void>;
+  isCaptureNotificationEnabled: boolean;
+  setCaptureNotificationEnabled: (enabled: boolean) => Promise<void>;
 }
 
 const VALID_CATEGORIES: CategoryId[] = [
@@ -190,7 +194,7 @@ const mapToDbAccount = (account: Account, userId: string, isDeleted = false): Db
     name: account.name,
     type: account.type,
     color: account.color,
-    icon: account.icon,
+    icon: account.bank || account.icon || 'wallet',
     initial_balance: account.initialBalance ?? account.initial_balance ?? 0,
     is_active: account.isActive ?? account.is_active ?? true,
     synced_at: null,
@@ -200,6 +204,7 @@ const mapToDbAccount = (account: Account, userId: string, isDeleted = false): Db
 };
 
 const fromDbAccount = (dbAcc: DbAccount): Account => {
+  const isCustomIcon = dbAcc.icon && dbAcc.icon !== 'wallet' && dbAcc.icon !== '🏦';
   return {
     id: dbAcc.id,
     userId: dbAcc.user_id,
@@ -208,6 +213,7 @@ const fromDbAccount = (dbAcc: DbAccount): Account => {
     type: dbAcc.type,
     color: dbAcc.color,
     icon: dbAcc.icon,
+    bank: (dbAcc as any).bank || (isCustomIcon ? dbAcc.icon : undefined),
     initialBalance: dbAcc.initial_balance,
     initial_balance: dbAcc.initial_balance,
     isActive: dbAcc.is_active,
@@ -245,6 +251,26 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<CategoryData[]>(initialCategories);
+  const [isCaptureNotificationEnabled, setIsCaptureNotificationEnabledState] = useState<boolean>(true);
+
+  useEffect(() => {
+    AsyncStorage.getItem('@SyncPay:notify_on_capture')
+      .then(val => {
+        if (val !== null) {
+          setIsCaptureNotificationEnabledState(val === 'true');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const setCaptureNotificationEnabled = useCallback(async (enabled: boolean) => {
+    setIsCaptureNotificationEnabledState(enabled);
+    try {
+      await AsyncStorage.setItem('@SyncPay:notify_on_capture', enabled ? 'true' : 'false');
+    } catch (e) {
+      console.error('Erro ao salvar preferência de notificação:', e);
+    }
+  }, []);
 
   const pushAccountsToCloud = useCallback(
     async (dbAccList: DbAccount[]) => {
@@ -270,7 +296,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (NotificationModule?.getStoredAccounts) {
         const stored = await NotificationModule.getStoredAccounts(currentUserId);
         if (Array.isArray(stored)) {
-          localAccounts = stored;
+          localAccounts = stored.map(s => {
+            const isCustom = s.icon && s.icon !== 'wallet' && s.icon !== '🏦';
+            return {
+              ...s,
+              bank: s.bank || (isCustom ? s.icon : undefined),
+            };
+          });
         }
       }
 
@@ -315,7 +347,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         name: accountData.name.trim(),
         type: accountData.type,
         color: accountData.color || '#10B981',
-        icon: accountData.icon || 'wallet',
+        icon: accountData.bank || accountData.icon || 'wallet',
+        bank: accountData.bank,
         initialBalance: accountData.initialBalance || 0,
         initial_balance: accountData.initialBalance || 0,
         isActive: accountData.isActive !== false,
@@ -345,10 +378,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateAccount = useCallback(
     async (updatedAcc: Account) => {
+      const accToSave: Account = {
+        ...updatedAcc,
+        icon: updatedAcc.bank || updatedAcc.icon || 'wallet',
+      };
       try {
         if (NotificationModule?.updateAccount) {
           await NotificationModule.updateAccount({
-            ...updatedAcc,
+            ...accToSave,
             userId: currentUserId,
           });
         }
@@ -357,10 +394,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       if (currentUserId) {
-        pushAccountsToCloud([mapToDbAccount(updatedAcc, currentUserId)]);
+        pushAccountsToCloud([mapToDbAccount(accToSave, currentUserId)]);
       }
 
-      setAccounts(prev => prev.map(a => (a.id === updatedAcc.id ? updatedAcc : a)));
+      setAccounts(prev => prev.map(a => (a.id === accToSave.id ? accToSave : a)));
     },
     [currentUserId, pushAccountsToCloud],
   );
@@ -679,8 +716,21 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setCategories(currentCats => recalculateCategoryExpenses(updated, currentCats));
         return updated;
       });
+
+      // Dispara notificação de confirmação do próprio SyncPay se habilitado
+      if (isCaptureNotificationEnabled) {
+        const formattedAmount = newTx.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const notifTitle = newTx.type === 'INCOME'
+          ? 'SyncPay • Receita Registrada 💰'
+          : 'SyncPay • Despesa Registrada 💳';
+        const notifMsg = newTx.type === 'INCOME'
+          ? `${newTx.title}: +${formattedAmount} (${newTx.bankName}) registrado!`
+          : `${newTx.title}: ${formattedAmount} (${newTx.bankName}) registrado com sucesso.`;
+
+        postLocalNotification(notifTitle, notifMsg);
+      }
     });
-  }, [currentUserId, pushToCloud]);
+  }, [currentUserId, pushToCloud, isCaptureNotificationEnabled]);
 
   const totalIncome = transactions
     .filter(t => t.type === 'INCOME')
@@ -869,6 +919,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         updateAccount,
         deleteAccount,
         loadStoredAccounts,
+        isCaptureNotificationEnabled,
+        setCaptureNotificationEnabled,
       }}>
       {children}
     </FinanceContext.Provider>
