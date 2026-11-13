@@ -106,10 +106,9 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Em produção, a assinatura utiliza propriedades seguras definidas fora do repositório
-            // (ex: ~/.gradle/gradle.properties ou variáveis de ambiente de CI/CD).
-            // Se as propriedades não existirem, não assina com chave de debug por segurança.
-            signingConfig (project.hasProperty('MYAPP_UPLOAD_STORE_FILE') ? signingConfigs.release : null)
+            // Em produção com keystore oficial, utiliza propriedades seguras (ex: ~/.gradle/gradle.properties).
+            // Em builds locais ou GitHub Release de pré-lançamento, utiliza debug como fallback de assinatura para permitir instalação direta no Android.
+            signingConfig (project.hasProperty('MYAPP_UPLOAD_STORE_FILE') ? signingConfigs.release : signingConfigs.debug)
             minifyEnabled false
             shrinkResources false
         }
