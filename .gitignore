@@ -1,9 +1,7 @@
 # OSX
-#
 .DS_Store
 
 # Xcode
-#
 build/
 *.pbxuser
 !default.pbxuser
@@ -22,32 +20,35 @@ DerivedData
 *.xcuserstate
 **/.xcode.env.local
 
-# Android/IntelliJ
-#
-build/
-.idea
-.gradle
-local.properties
+# Android / Gradle / IntelliJ
+.idea/
+.gradle/
+.kotlin/
+.cxx/
 *.iml
 *.hprof
-.cxx/
-*.keystore
-!debug.keystore
-.kotlin/
+build/
+android/app/build/
+android/build/
+android/.gradle/
+local.properties
+android/local.properties
 
-# node.js
-#
+# Keystores e certificados de assinatura
+# Bloqueia todos os keystores de produção e preserva apenas o debug padrão do React Native
+*.keystore
+*.jks
+!debug.keystore
+!android/app/debug.keystore
+
+# Node.js / Dependências
 node_modules/
+.npm/
+.yarn/
 npm-debug.log
 yarn-error.log
 
-# fastlane
-#
-# It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the
-# screenshots whenever they are needed.
-# For more information about the recommended setup visit:
-# https://docs.fastlane.tools/best-practices/source-control/
-
+# Fastlane
 **/fastlane/report.xml
 **/fastlane/Preview.html
 **/fastlane/screenshots
@@ -60,37 +61,13 @@ yarn-error.log
 **/Pods/
 /vendor/bundle/
 
-# Temporary files created by Metro to check the health of the file watcher
-.metro-health-check*
-
-# testing
-/coverage
-
-# Yarn
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
-
-# Dependências e caches
-node_modules/
-.npm/
-.yarn/
-
-# Android
-android/app/build/
-android/build/
-android/.gradle/
-android/local.properties
-android/app/*.keystore
-android/app/*.jks
-*.hprof
-
 # Metro e temporários
 .metro-health-check*
 *.log
+
+# Testes e cobertura
+/coverage
+
 # Variáveis de ambiente e segredos
 .env
 .env.*

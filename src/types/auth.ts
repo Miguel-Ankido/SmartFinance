@@ -7,4 +7,5 @@ export interface User {
   createdAt: number;
   role: UserRole;
   avatarUrl?: string;
+  monthlyIncome?: number;
 }

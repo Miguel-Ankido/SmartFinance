@@ -1,514 +1,193 @@
-# 💰 SmartFinance
+# ⚡ SyncPay (SmartFinance)
 
-Aplicativo mobile para **gestão financeira pessoal**, desenvolvido com React Native e TypeScript.
+<p align="center">
+  <img src="src/assets/logo.png" alt="SyncPay Logo" width="120" height="120" style="border-radius: 24px;" />
+</p>
 
-O SmartFinance foi criado para centralizar o controle das finanças em um único aplicativo, permitindo acompanhar saldo, receitas, despesas, transações, limites de gastos e indicadores financeiros de forma simples e visual.
+<p align="center">
+  <b>Gestão financeira pessoal inteligente, automatizada e offline-first.</b><br/>
+  Intercepção nativa de notificações bancárias, controle orçamentário por categorias, gestão de carteiras e sincronização em nuvem em tempo real com Supabase.
+</p>
 
----
-
-## 📱 Sobre o projeto
-
-O **SmartFinance** é uma aplicação mobile multiplataforma voltada para organização e acompanhamento financeiro pessoal.
-
-A aplicação possui autenticação de usuários, gerenciamento de transações, controle de limites, análises gráficas e integração com o Supabase para persistência dos dados.
-
-### 🎯 Objetivos
-
-* Centralizar o controle das finanças pessoais;
-* Facilitar o registro e acompanhamento de receitas e despesas;
-* Permitir a definição e acompanhamento de limites financeiros;
-* Apresentar informações financeiras de maneira visual;
-* Disponibilizar análises por período, categoria e instituição financeira;
-* Oferecer uma experiência mobile simples e intuitiva.
+<p align="center">
+  <img src="https://img.shields.io/badge/React%20Native-0.87.1-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React Native" />
+  <img src="https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Supabase-Backend%20%26%20Auth-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase" />
+  <img src="https://img.shields.io/badge/Android-Kotlin%20Native%20Module-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android" />
+  <img src="https://img.shields.io/badge/Security-FLAG__SECURE-A855F7?style=for-the-badge&logo=shield&logoColor=white" alt="Security" />
+</p>
 
 ---
 
-## ✨ Funcionalidades
+## 🎯 Sobre o SyncPay
 
-### 🔐 Autenticação
+O **SyncPay** (SmartFinance) resolve o principal atrito das aplicações de finanças pessoais: **o esquecimento ou preguiça de lançar gastos manualmente**.
 
-* Criação de conta;
-* Login com e-mail e senha;
-* Persistência da sessão;
-* Logout;
-* Validação dos campos de autenticação;
-* Tela de carregamento/splash durante a inicialização.
-
-A autenticação e persistência da sessão são realizadas utilizando **Supabase Auth** e `AsyncStorage`.
+Através de um **serviço nativo em segundo plano (Android NotificationListenerService)**, o SyncPay escuta, filtra e processa as notificações de bancos e carteiras digitais (como Nubank, PicPay, Inter, Itaú, Bradesco, Santander, etc.). As despesas e receitas são identificadas e categorizadas instantaneamente no momento em que você passa o cartão ou faz um Pix, mantendo seu saldo, limites e relatórios sempre em dia.
 
 ---
 
-### 🏠 Dashboard
+## ✨ Principais Funcionalidades
 
-A tela inicial apresenta um resumo da situação financeira do usuário:
+### 🤖 1. Automação Inteligente de Despesas & Receitas
+- **Módulo Nativo de Intercepção:** Serviço em segundo plano em Kotlin que captura notificações apenas dos bancos autorizados pelo usuário.
+- **Parser de Regex Avançado:** Identifica estabelecimentos, datas, horários e valores monetários (com suporte a vírgulas e pontos).
+- **Filtro Anti-Promoções (Camada Dupla):** Blacklist nativa e em TypeScript que descarta notificações promocionais, cupons, ofertas, faturas fechadas, empréstimos e cashback antes de criar qualquer registro.
+- **Feedback Imediato via Notificação Própria:** O SyncPay dispara um aviso local (*"💳 Gasto registrado: R$ 35,00 (Nubank)"*) confirmando a captura automática (podendo ser desativado nas configurações).
 
-* Saldo total consolidado;
-* Total de receitas;
-* Total de despesas;
-* Fluxo de saídas semanal;
-* Atividades recentes;
-* Detalhes das transações;
-* Indicadores financeiros;
-* Acesso rápido ao extrato.
+### ☁️ 2. Arquitetura Offline-First & Nuvem (Supabase)
+- **Persistência Local Instantânea:** Os dados são salvos localmente via SQLite / Native Storage para funcionar mesmo sem sinal de internet.
+- **Sincronização em Nuvem (Supabase):** Sincronização automática bidirecional para as tabelas `transactions`, `accounts`, `budgets` e `profiles`.
+- **Troca de Aparelho Segura:** Ao entrar na conta em um novo smartphone, todo o histórico de transações, limites e carteiras é restaurado automaticamente.
+- **Realtime Listener:** Se a conta estiver aberta em múltiplos dispositivos, novos lançamentos são refletidos instantaneamente.
 
----
+### 💼 3. Gestão de Carteiras & Contas
+- Cadastre múltiplas contas (Corrente, Poupança, Investimentos, Dinheiro, etc.).
+- **Vínculo com Banco/Método:** Ao criar uma carteira (ex: "Cartão Nubank"), você pode atrelá-la ao banco padrão; lançamentos manuais puxam automaticamente essa configuração.
+- Saldo dinâmico recalculado a cada nova despesa ou receita.
 
-### 💳 Gerenciamento de transações
+### 📊 4. Limites de Gastos & Orçamento Mensal
+- Defina tetos de gastos mensais por categoria (Alimentação, Transporte, Lazer, Contas, Compras, etc.).
+- Barra de progresso com alerta visual quando um limite atinge faixas críticas (80%, 100%+).
+- Cálculo em tempo real dos gastos acumulados dentro do mês vigente.
 
-O aplicativo permite registrar e acompanhar movimentações financeiras.
+### 📈 5. Métricas, Gráficos & Exportação
+- Gráficos vetoriais de alta performance utilizando **React Native SVG**.
+- Gráfico de barras de fluxo semanal de saídas.
+- Histórico comparativo de receitas vs. despesas dos últimos 6 meses.
+- Gráfico Donut de distribuição por categoria e ranking de gastos por banco.
+- **Exportação de Relatórios:** Geração e compartilhamento de relatórios em formato CSV e texto formatado.
 
-Funcionalidades incluem:
+### 🛡️ 6. Segurança & Proteção de Dados
+- **FLAG_SECURE Ativo:** A janela do app bloqueia capturas de tela (*print screens*) e gravações espiãs no Android, protegendo os dados bancários.
+- **Supabase Row Level Security (RLS):** Cada usuário tem acesso estrito e isolado exclusivamente aos seus próprios registros.
 
-* Adicionar transações;
-* Editar transações;
-* Visualizar detalhes;
-* Separar receitas e despesas;
-* Filtrar por tipo;
-* Filtrar por período;
-* Visualizar movimentações por mês;
-* Navegar entre diferentes meses;
-* Visualizar todas as movimentações;
-* Cálculo automático dos totais do período.
-
-As transações também podem apresentar informações como:
-
-* Descrição;
-* Valor;
-* Data;
-* Horário;
-* Tipo da movimentação;
-* Categoria;
-* Instituição financeira.
+### 🚀 7. Onboarding Animado & Perfil Customizável
+- Fluxo de boas-vindas imersivo no primeiro acesso com animações fluidas para configuração rápida de limites e permissão de bancos.
+- Personalização de perfil: edição de nome e seleção de foto/avatar.
 
 ---
 
-### 📊 Análises e gráficos
+## 🎨 Identidade Visual (Design System)
 
-A área de estatísticas apresenta informações financeiras de forma visual.
+O SyncPay adota uma estética moderna, elegante e focada em produtividade:
 
-Inclui:
-
-* Comparação entre receitas e despesas;
-* Histórico financeiro dos últimos 6 meses;
-* Distribuição de despesas por categoria;
-* Ranking de gastos por banco;
-* Quantidade de transações por instituição;
-* Categoria com maior impacto nos gastos;
-* Detalhamento das informações através de modais.
-
-Os gráficos são renderizados utilizando **React Native SVG**.
+| Elemento | Código HEX | Finalidade |
+| :--- | :--- | :--- |
+| **Fundo Profundo** | `#070b0e` | Background principal escuro e imersivo |
+| **Superfícies / Cards** | `#0f171b` / `#141e24` | Contêineres de informações e modais |
+| **Destaque Principal** | `#a855f7` | Roxo neon característico da marca |
+| **Receitas (Entradas)** | `#34d399` | Verde esmeralda para valores positivos |
+| **Despesas (Saídas)** | `#f87171` | Vermelho coral para saídas e alertas |
 
 ---
 
-### 💰 Controle de limites
+## 🛠️ Tecnologias & Ferramentas
 
-O SmartFinance permite acompanhar limites financeiros definidos pelo usuário.
-
-É possível:
-
-* Visualizar limites;
-* Editar limites;
-* Acompanhar utilização;
-* Comparar gastos com os valores estabelecidos.
-
----
-
-### 🔔 Notificações
-
-O projeto possui uma estrutura dedicada ao gerenciamento de notificações, incluindo:
-
-* Solicitação de permissão;
-* Listener de notificações;
-* Bridge para integração com recursos nativos.
+- **Core:** [React Native](https://reactnative.dev/) (v0.87.1 Bare Workflow)
+- **Linguagens:** [TypeScript](https://www.typescriptlang.org/) (Strict Mode) & [Kotlin](https://kotlinlang.org/)
+- **Backend & Auth:** [Supabase](https://supabase.com/) (Auth, Database, Realtime)
+- **Navegação:** [React Navigation](https://reactnavigation.org/) (Native Stack)
+- **Armazenamento:** SQLite Nativo, `@react-native-async-storage/async-storage`
+- **Gráficos:** `react-native-svg`
+- **Animações:** `react-native-reanimated`
+- **Testes Unitários:** [Jest](https://jestjs.io/) (100% de aprovação em 9 suítes e 62+ testes)
 
 ---
 
-### 👤 Perfil
-
-A aplicação possui uma área de perfil para gerenciamento das informações do usuário e acesso às funcionalidades relacionadas à conta.
-
----
-
-## 🛠️ Tecnologias utilizadas
-
-| Tecnologia           | Utilização                           |
-| -------------------- | ------------------------------------ |
-| **React Native**     | Desenvolvimento mobile               |
-| **TypeScript**       | Tipagem e desenvolvimento            |
-| **React**            | Construção da interface              |
-| **Supabase**         | Autenticação e persistência de dados |
-| **AsyncStorage**     | Persistência local da sessão         |
-| **React Native SVG** | Gráficos e elementos visuais         |
-| **React Navigation** | Navegação                            |
-| **Jest**             | Testes                               |
-| **ESLint**           | Análise de código                    |
-| **Prettier**         | Formatação de código                 |
-
-### Versões principais
+## 📁 Estrutura de Diretórios
 
 ```text
-React Native: 0.87.1
-React: 19.2.3
-TypeScript: 6.x
-Supabase JS: 2.x
-Node.js: >= 22.11.0
-```
-
----
-
-## 🏗️ Arquitetura
-
-O projeto segue uma organização baseada em componentes, telas, contextos e serviços.
-
-```text
-SmartFinance
-│
-├── android/                  # Projeto nativo Android
-├── ios/                      # Projeto nativo iOS
-│
+SmartFinance/
+├── __tests__/                  # Suítes de testes unitários (Jest)
+├── android/                    # Projeto nativo Android (Gradle, Kotlin, Manifest)
+│   └── app/src/main/java/com/smartfinance/
+│       ├── MainActivity.kt     # Janela principal com FLAG_SECURE
+│       ├── NotificationModule.kt # Módulo nativo exposto para o React Native
+│       └── NotificationService.kt# Listener nativo de notificações bancárias
 ├── src/
-│   │
-│   ├── assets/               # Imagens e recursos
-│   │
-│   ├── components/           # Componentes reutilizáveis
-│   │
-│   ├── context/              # Contextos globais da aplicação
-│   │
-│   ├── screens/              # Telas da aplicação
-│   │   ├── AuthScreen.tsx
-│   │   ├── HomeScreen.tsx
-│   │   ├── TransactionsScreen.tsx
-│   │   ├── BudgetScreen.tsx
-│   │   ├── StatsScreen.tsx
-│   │   └── ProfileScreen.tsx
-│   │
-│   ├── services/             # Serviços e integrações externas
-│   │   ├── supabase.ts
-│   │   ├── notificationBridge.ts
-│   │   ├── notificationListener.ts
-│   │   └── parser/
-│   │
-│   ├── theme/                # Tema e identidade visual
-│   │
-│   ├── types/                # Tipos e interfaces TypeScript
-│   │
-│   └── utils/                # Funções auxiliares
-│
-├── __tests__/                # Testes automatizados
-│
-├── App.tsx                   # Ponto principal da aplicação
-├── package.json
-├── tsconfig.json
-├── babel.config.js
-├── metro.config.js
-└── README.md
+│   ├── assets/                 # Imagens, ícones e logotipo do app
+│   ├── components/             # Modais, steps de onboarding e cards modulares
+│   │   └── onboarding/         # WelcomeStep, BudgetStep, BanksStep
+│   ├── context/                # Estados globais (AuthContext, FinanceContext)
+│   ├── navigation/             # Configuração de rotas e navegação
+│   ├── screens/                # Telas da aplicação (Home, Extrato, Limites, Gráficos, Perfil)
+│   ├── services/
+│   │   ├── parser/             # Motor de extração de dados e blacklist de ofertas
+│   │   ├── notificationListener.ts # Bridge de eventos nativos
+│   │   ├── syncService.ts      # Motor de sincronização com o Supabase
+│   │   └── supabase.ts         # Inicialização do cliente Supabase
+│   ├── theme/                  # Paleta de cores, tipografia e espaçamentos
+│   ├── types/                  # Definições de tipos TypeScript
+│   └── utils/                  # Formatadores e utilitários de cores de bancos
+├── .env.example                # Modelo de variáveis de ambiente
+└── package.json
 ```
 
 ---
 
-## 🔄 Fluxo da aplicação
+## 🚀 Como Executar o Projeto Localmente
 
-De maneira simplificada, o fluxo principal funciona da seguinte forma:
+### Pré-requisitos
+- Node.js (v18 ou superior)
+- JDK 17 (Java Development Kit)
+- Android Studio e Android SDK configurados (`ANDROID_HOME`)
+- Dispositivo Android físico ou emulador com Google Play Services (API 28+)
 
-```text
-                 ┌─────────────────┐
-                 │    SmartFinance │
-                 └────────┬────────┘
-                          │
-                          ▼
-                  ┌───────────────┐
-                  │ Autenticação  │
-                  └───────┬───────┘
-                          │
-                 ┌────────┴────────┐
-                 │                 │
-              Usuário           Sem sessão
-                 │                 │
-                 ▼                 ▼
-          ┌─────────────┐    ┌─────────────┐
-          │  Dashboard  │    │    Login    │
-          └──────┬──────┘    └─────────────┘
-                 │
-        ┌────────┼────────┬──────────┐
-        │        │        │          │
-        ▼        ▼        ▼          ▼
-     Extrato  Limites  Gráficos   Perfil
-        │        │        │          │
-        └────────┴────────┴──────────┘
-                     │
-                     ▼
-                ┌──────────┐
-                │ Supabase │
-                └──────────┘
-```
-
----
-
-## 🚀 Como executar o projeto
-
-### 📋 Pré-requisitos
-
-Antes de executar o projeto, certifique-se de possuir:
-
-* Node.js `>= 22.11.0`;
-* npm;
-* JDK configurado para desenvolvimento Android;
-* Android Studio e/ou Xcode;
-* Emulador Android/iOS ou dispositivo físico;
-* Ambiente React Native configurado.
-
-Para detalhes sobre a configuração do ambiente, consulte a documentação oficial do React Native.
-
----
-
-## 📥 Instalação
-
-Clone o repositório:
-
+### 1. Clonar o repositório
 ```bash
 git clone https://github.com/Miguel-Ankido/SmartFinance.git
-```
-
-Entre na pasta:
-
-```bash
 cd SmartFinance
 ```
 
-Instale as dependências:
-
+### 2. Instalar dependências
 ```bash
 npm install
 ```
 
----
-
-## ▶️ Executando o projeto
-
-### Metro
-
-Inicie o servidor Metro:
-
-```bash
-npm start
-```
-
-### Android
-
-Em outro terminal:
-
-```bash
-npm run android
-```
-
-### iOS
-
-Para iOS, instale as dependências nativas:
-
-```bash
-bundle install
-bundle exec pod install
-```
-
-Depois execute:
-
-```bash
-npm run ios
-```
-
----
-
-## 🧪 Testes
-
-Para executar os testes automatizados:
-
-```bash
-npm test
-```
-
-Para executar o lint:
-
-```bash
-npm run lint
-```
-
----
-
-## 🔧 Configuração do Supabase
-
-O SmartFinance utiliza o **Supabase** como serviço de backend.
-
-A integração está centralizada em:
-
-```text
-src/services/supabase.ts
-```
-
-O projeto utiliza:
-
-* Supabase Authentication;
-* Persistência de sessão;
-* AsyncStorage;
-* Cliente oficial `@supabase/supabase-js`.
-
-### ⚠️ Segurança
-
-Para ambientes de desenvolvimento, é recomendado utilizar variáveis de ambiente em vez de manter configurações de infraestrutura diretamente no código-fonte.
-
-Uma configuração mais adequada seria:
-
+### 3. Configurar variáveis de ambiente
+Crie um arquivo `.env` na raiz do projeto com as credenciais do seu projeto Supabase:
 ```env
-SUPABASE_URL=sua_url
-SUPABASE_ANON_KEY=sua_chave
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_ANON_KEY=sua-chave-anonima-publica
 ```
 
-> **Importante:** nunca exponha chaves privilegiadas, como `service_role`, dentro de uma aplicação mobile. Apenas credenciais apropriadas para uso público/client-side devem ser utilizadas no aplicativo.
-
----
-
-## 🎨 Interface
-
-A interface do SmartFinance utiliza uma identidade visual focada em:
-
-* Tema escuro;
-* Cards financeiros;
-* Indicadores visuais;
-* Gráficos;
-* Navegação inferior;
-* Componentes modais;
-* Feedback visual para receitas e despesas.
-
-A navegação principal é composta por cinco áreas:
-
-```text
-┌────────┬─────────┬─────────┬──────────┬────────┐
-│  Home  │ Extrato │ Limites │ Gráficos │ Perfil │
-└────────┴─────────┴─────────┴──────────┴────────┘
-```
-
-A aplicação também permite navegação horizontal entre as principais telas.
-
----
-
-## 📱 Principais telas
-
-### Home
-
-Dashboard financeiro com:
-
-* Saldo;
-* Receitas;
-* Despesas;
-* Fluxo semanal;
-* Atividades recentes.
-
-### Extrato
-
-Gerenciamento e consulta das movimentações financeiras.
-
-### Limites
-
-Controle dos limites financeiros definidos pelo usuário.
-
-### Gráficos
-
-Visualização de:
-
-* Receitas x despesas;
-* Histórico mensal;
-* Gastos por categoria;
-* Gastos por banco.
-
-### Perfil
-
-Área relacionada aos dados e configurações da conta.
-
----
-
-## 🧩 Componentes
-
-O projeto utiliza componentes reutilizáveis para funcionalidades específicas, incluindo:
-
-```text
-AddTransactionModal
-EditTransactionModal
-EditBudgetModal
-TransactionDetailModal
-BankDetailModal
-CategoryDistributionModal
-IncomeExpenseDetailModal
-ExportReportModal
-WeeklyOutflowDetailModal
-NotificationPermissionCard
-```
-
-Essa organização facilita a manutenção e a evolução da interface.
-
----
-
-## 🧪 Estrutura de qualidade
-
-O projeto possui configuração para:
-
-* **ESLint** — análise estática do código;
-* **Prettier** — padronização de formatação;
-* **Jest** — testes automatizados;
-* **TypeScript** — verificação estática de tipos.
-
-Scripts disponíveis:
-
+### 4. Executar no Android
+Inicie o Metro Bundler:
 ```bash
 npm start
-npm run android
-npm run ios
-npm test
-npm run lint
 ```
 
----
+Em outro terminal, compile e instale o app no dispositivo:
+```bash
+npm run android
+```
 
-## 📌 Roadmap
-
-Possíveis evoluções para o projeto:
-
-* [ ] Melhorar cobertura de testes;
-* [ ] Implementar testes E2E;
-* [ ] Separar configurações do Supabase em variáveis de ambiente;
-* [ ] Melhorar tratamento global de erros;
-* [ ] Adicionar suporte a múltiplas contas bancárias;
-* [ ] Adicionar metas financeiras;
-* [ ] Criar notificações de vencimentos;
-* [ ] Adicionar filtros avançados;
-* [ ] Melhorar acessibilidade;
-* [ ] Criar pipeline de CI/CD;
-* [ ] Disponibilizar builds para Android e iOS.
+> **Dica para Testes de Notificação no Emulador:**  
+> Você pode simular notificações bancárias via ADB executando:
+> ```bash
+> adb shell cmd notification post -t "Nubank" -S bigtext "nubank" "Compra de R$ 42,50 no Supermercado aprovada."
+> ```
 
 ---
 
-## 📂 Repositório
+## 🧪 Executando os Testes
 
-O código-fonte está disponível no GitHub:
+O projeto conta com ampla cobertura de testes cobrindo CRUD, cálculos financeiros, parser bancário, filtros de notificações e onboarding:
 
-**https://github.com/Miguel-Ankido/SmartFinance**
+```bash
+npm test
+```
 
 ---
 
 ## 👨‍💻 Autor
 
-**Miguel Nunes**
-
-GitHub: **[@Miguel-Ankido](https://github.com/Miguel-Ankido)**
+**Miguel Nunes**  
+GitHub: [@Miguel-Ankido](https://github.com/Miguel-Ankido)
 
 ---
 
 ## 📄 Licença
 
-Este projeto não possui uma licença open source definida no momento.
-
-Caso o projeto seja disponibilizado publicamente para uso ou contribuição, recomenda-se definir uma licença adequada, como MIT, Apache 2.0 ou outra que corresponda aos objetivos do projeto.
-
----
-
-<p align="center">
-  Desenvolvido com ❤️ usando React Native e TypeScript.
-</p>
+Este projeto é desenvolvido para fins de controle e automação financeira pessoal. Todos os direitos reservados.

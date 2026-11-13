@@ -15,12 +15,17 @@ interface AuthContextData {
   hasCompletedOnboarding: boolean;
   completeOnboarding: () => Promise<void>;
   resetOnboarding: () => Promise<void>;
-  updateUserProfile: (data: { name: string; avatarUrl?: string }) => Promise<{ success: boolean; error?: string }>;
+  updateUserProfile: (data: {
+    name: string;
+    avatarUrl?: string;
+    monthlyIncome?: number;
+  }) => Promise<{ success: boolean; error?: string }>;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (
     name: string,
     email: string,
     password: string,
+    monthlyIncome?: number,
   ) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
@@ -69,6 +74,10 @@ async function enrichUserProfile(baseUser: User): Promise<User> {
         ...baseUser,
         name: parsed.name || baseUser.name,
         avatarUrl: parsed.avatarUrl !== undefined ? parsed.avatarUrl : baseUser.avatarUrl,
+        monthlyIncome:
+          parsed.monthlyIncome !== undefined
+            ? Number(parsed.monthlyIncome)
+            : baseUser.monthlyIncome,
       };
     }
   } catch {
@@ -85,6 +94,11 @@ async function toAppUser(authUser: SupabaseAuthUser): Promise<User> {
       ? metadataName.trim()
       : authUser.email?.split('@')[0] ?? 'SyncPay User';
 
+  const metadataIncome =
+    authUser.user_metadata?.monthly_income !== undefined && authUser.user_metadata?.monthly_income !== null
+      ? Number(authUser.user_metadata.monthly_income)
+      : undefined;
+
   const base: User = {
     id: authUser.id,
     name,
@@ -92,6 +106,7 @@ async function toAppUser(authUser: SupabaseAuthUser): Promise<User> {
     createdAt: authUser.created_at ? new Date(authUser.created_at).getTime() : Date.now(),
     role: profileRole,
     avatarUrl: authUser.user_metadata?.avatar_url as string | undefined,
+    monthlyIncome: metadataIncome,
   };
 
   return enrichUserProfile(base);
@@ -137,7 +152,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user?.id]);
 
   const updateUserProfile = useCallback(
-    async (data: { name: string; avatarUrl?: string }): Promise<{ success: boolean; error?: string }> => {
+    async (data: {
+      name: string;
+      avatarUrl?: string;
+      monthlyIncome?: number;
+    }): Promise<{ success: boolean; error?: string }> => {
       const trimmedName = data.name.trim();
       if (!trimmedName) {
         return { success: false, error: 'O nome não pode ficar em branco.' };
@@ -148,17 +167,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       try {
+        const incomeVal = data.monthlyIncome !== undefined ? Number(data.monthlyIncome) : user.monthlyIncome;
         const updatedUser: User = {
           ...user,
           name: trimmedName,
           avatarUrl: data.avatarUrl?.trim() || undefined,
+          monthlyIncome: incomeVal,
         };
 
         setUser(updatedUser);
 
         await AsyncStorage.setItem(
           `@SyncPay:user_profile_${user.id}`,
-          JSON.stringify({ name: updatedUser.name, avatarUrl: updatedUser.avatarUrl }),
+          JSON.stringify({
+            name: updatedUser.name,
+            avatarUrl: updatedUser.avatarUrl,
+            monthlyIncome: updatedUser.monthlyIncome,
+          }),
         );
 
         if (isSupabaseConfigured && supabase) {
@@ -168,14 +193,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 name: updatedUser.name,
                 display_name: updatedUser.name,
                 avatar_url: updatedUser.avatarUrl,
+                monthly_income: updatedUser.monthlyIncome,
               },
             });
 
+            // Tenta atualizar no public.profiles se a coluna existir
             await supabase
               .from('profiles')
               .update({
                 name: updatedUser.name,
                 avatar_url: updatedUser.avatarUrl,
+                monthly_income: updatedUser.monthlyIncome,
                 updated_at: new Date().toISOString(),
               })
               .eq('id', user.id);
@@ -307,19 +335,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     name: string,
     email: string,
     password: string,
+    monthlyIncome?: number,
   ): Promise<{ success: boolean; error?: string }> => {
     try {
       if (isSupabaseConfigured && supabase) {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { display_name: name, name } },
+          options: {
+            data: {
+              display_name: name,
+              name,
+              monthly_income: monthlyIncome !== undefined && monthlyIncome > 0 ? monthlyIncome : undefined,
+            },
+          },
         });
         if (error || !data.user) {
           return { success: false, error: error?.message || 'Unable to create account.' };
         }
 
         const appUser = await toAppUser(data.user);
+        if (monthlyIncome !== undefined && monthlyIncome > 0) {
+          appUser.monthlyIncome = monthlyIncome;
+          await AsyncStorage.setItem(
+            `@SyncPay:user_profile_${appUser.id}`,
+            JSON.stringify({
+              name: appUser.name,
+              avatarUrl: appUser.avatarUrl,
+              monthlyIncome,
+            }),
+          );
+        }
+
         setUser(appUser);
         // Novo registro: garante que o onboarding é acionado
         await AsyncStorage.removeItem(`${ONBOARDING_STORAGE_PREFIX}${appUser.id}`);
@@ -333,6 +380,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const newUser: LocalUser = await NotificationModule.registerUser(name, email, password);
       const appUser = toLocalUser(newUser);
+      if (monthlyIncome !== undefined && monthlyIncome > 0) {
+        appUser.monthlyIncome = monthlyIncome;
+        await AsyncStorage.setItem(
+          `@SyncPay:user_profile_${appUser.id}`,
+          JSON.stringify({
+            name: appUser.name,
+            avatarUrl: appUser.avatarUrl,
+            monthlyIncome,
+          }),
+        );
+      }
       setUser(appUser);
       // Novo registro: garante que o onboarding é acionado
       await AsyncStorage.removeItem(`${ONBOARDING_STORAGE_PREFIX}${appUser.id}`);

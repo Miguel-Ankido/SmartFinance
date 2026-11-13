@@ -26,6 +26,7 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [monthlyIncomeStr, setMonthlyIncomeStr] = useState('');
 
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -67,7 +68,14 @@ export default function AuthScreen() {
       }
 
       setLoading(true);
-      const res = await register(name.trim(), email.trim(), password);
+      const cleanIncome = monthlyIncomeStr
+        .replace(/\./g, '')
+        .replace(',', '.')
+        .replace(/[^0-9.]/g, '');
+      const parsedIncome = parseFloat(cleanIncome);
+      const validIncome = !isNaN(parsedIncome) && parsedIncome > 0 ? parsedIncome : undefined;
+
+      const res = await register(name.trim(), email.trim(), password, validIncome);
       setLoading(false);
       if (!res.success) {
         setErrorMessage(res.error || 'Erro ao criar conta.');
@@ -196,6 +204,19 @@ export default function AuthScreen() {
                   onChangeText={setConfirmPassword}
                   secureTextEntry
                 />
+
+                <Text style={styles.inputLabel}>RENDA MENSAL ESTIMADA (OPCIONAL)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: 4500 ou 4.500,00"
+                  placeholderTextColor={Colors.textMuted}
+                  value={monthlyIncomeStr}
+                  onChangeText={setMonthlyIncomeStr}
+                  keyboardType="numeric"
+                />
+                <Text style={styles.incomeHint}>
+                  💡 Baliza seus limites de gastos para evitar que as despesas ultrapassem seus ganhos do mês.
+                </Text>
               </>
             ) : null}
 
@@ -331,6 +352,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  incomeHint: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 6,
+    marginBottom: 4,
   },
   actionButton: {
     backgroundColor: Colors.primary,

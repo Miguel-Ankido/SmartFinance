@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   ScrollView,
   Animated,
+  Alert,
 } from 'react-native';
 import { Colors } from '../../theme/colors';
 import { CategoryId } from '../../types/finance';
 import { useFinance } from '../../context/FinanceContext';
+import { useAuth } from '../../context/AuthContext';
 
 interface BudgetStepProps {
   onNext: () => void;
@@ -33,6 +35,8 @@ const MAIN_BUDGET_CATEGORIES: BudgetCategoryConfig[] = [
 
 export default function BudgetStep({ onNext, onBack }: BudgetStepProps) {
   const { updateCategoryBudget, categories } = useFinance();
+  const { user } = useAuth();
+  const userIncome = user?.monthlyIncome && user.monthlyIncome > 0 ? user.monthlyIncome : 0;
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
@@ -71,7 +75,20 @@ export default function BudgetStep({ onNext, onBack }: BudgetStepProps) {
     setLimits(prev => ({ ...prev, [id]: clean }));
   };
 
+  const totalCalculated = MAIN_BUDGET_CATEGORIES.reduce((acc, cat) => {
+    const val = parseFloat(limits[cat.id]) || 0;
+    return acc + val;
+  }, 0);
+
   const handleContinue = async () => {
+    if (userIncome > 0 && totalCalculated > userIncome) {
+      Alert.alert(
+        'Limite Superior à Renda',
+        `A soma dos limites (R$ ${totalCalculated.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) não pode ultrapassar a sua renda mensal declarada (R$ ${userIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}). Reduza os valores para manter o equilíbrio financeiro.`,
+      );
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       // Salva os limites configurados no SQLite local e dispara sync no Supabase
@@ -88,11 +105,6 @@ export default function BudgetStep({ onNext, onBack }: BudgetStepProps) {
     }
   };
 
-  const totalCalculated = MAIN_BUDGET_CATEGORIES.reduce((acc, cat) => {
-    const val = parseFloat(limits[cat.id]) || 0;
-    return acc + val;
-  }, 0);
-
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -108,11 +120,31 @@ export default function BudgetStep({ onNext, onBack }: BudgetStepProps) {
         </View>
 
         {/* Card do Total Previsto */}
-        <View style={styles.totalSummaryCard}>
-          <Text style={styles.totalLabel}>TETO TOTAL PREVISTO</Text>
-          <Text style={styles.totalValue}>
-            {totalCalculated.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-          </Text>
+        <View style={[styles.totalSummaryCard, userIncome > 0 && totalCalculated > userIncome && styles.totalSummaryCardAlert]}>
+          <View style={styles.summaryRow}>
+            <View>
+              <Text style={styles.totalLabel}>TETO TOTAL PREVISTO</Text>
+              <Text style={[styles.totalValue, userIncome > 0 && totalCalculated > userIncome && styles.totalValueAlert]}>
+                {totalCalculated.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </Text>
+            </View>
+            {userIncome > 0 && (
+              <View style={styles.incomeCol}>
+                <Text style={styles.incomeBadgeLabel}>SUA RENDA MENSAL</Text>
+                <Text style={styles.incomeBadgeValue}>
+                  {userIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {userIncome > 0 && totalCalculated > userIncome && (
+            <View style={styles.exceedAlertBox}>
+              <Text style={styles.exceedAlertText}>
+                ⚠️ A soma dos limites ultrapassa sua renda em {(totalCalculated - userIncome).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Reduza os valores para continuar.
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Inputs das Categorias */}
@@ -211,10 +243,48 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceCard,
     padding: 16,
     borderRadius: 14,
-    alignItems: 'center',
     marginBottom: 16,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  totalSummaryCardAlert: {
+    borderColor: 'rgba(248, 113, 113, 0.5)',
+    backgroundColor: 'rgba(248, 113, 113, 0.08)',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  incomeCol: {
+    alignItems: 'flex-end',
+  },
+  incomeBadgeLabel: {
+    color: Colors.textMuted,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  incomeBadgeValue: {
+    color: Colors.income,
+    fontSize: 15,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  totalValueAlert: {
+    color: Colors.expense,
+  },
+  exceedAlertBox: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(248, 113, 113, 0.25)',
+  },
+  exceedAlertText: {
+    color: Colors.expense,
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 15,
   },
   totalLabel: {
     color: Colors.textSecondary,

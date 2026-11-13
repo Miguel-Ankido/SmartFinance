@@ -8,10 +8,12 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { CategoryData } from '../types/finance';
 import { useFinance } from '../context/FinanceContext';
+import { useAuth } from '../context/AuthContext';
 
 interface EditBudgetModalProps {
   category: CategoryData | null;
@@ -19,7 +21,9 @@ interface EditBudgetModalProps {
 }
 
 export default function EditBudgetModal({ category, onClose }: EditBudgetModalProps) {
-  const { updateCategoryBudget } = useFinance();
+  const { updateCategoryBudget, categories } = useFinance();
+  const { user } = useAuth();
+  const userIncome = user?.monthlyIncome && user.monthlyIncome > 0 ? user.monthlyIncome : 0;
   const [newLimitStr, setNewLimitStr] = useState('');
 
   useEffect(() => {
@@ -36,16 +40,29 @@ export default function EditBudgetModal({ category, onClose }: EditBudgetModalPr
   const remainingWithNewLimit = Math.max(0, parsedLimit - currentSpent);
   const isOverBudget = parsedLimit > 0 && currentSpent > parsedLimit;
 
+  // Cálculo da soma com as outras categorias vs renda do usuário
+  const otherCategoriesTotal = categories
+    .filter(c => c.id !== category.id)
+    .reduce((sum, c) => sum + (c.budgetLimit || 0), 0);
+  const newTotalLimit = otherCategoriesTotal + parsedLimit;
+  const exceedsIncome = userIncome > 0 && newTotalLimit > userIncome;
+
   const handleAddQuick = (increment: number) => {
     const current = parseFloat(newLimitStr.replace(',', '.')) || 0;
     setNewLimitStr((current + increment).toString());
   };
 
   const handleSave = () => {
-    if (parsedLimit >= 0) {
-      updateCategoryBudget(category.id, parsedLimit);
-      onClose();
+    if (parsedLimit < 0) return;
+    if (exceedsIncome) {
+      Alert.alert(
+        'Limite Superior à Renda',
+        `A soma de todos os limites (R$ ${newTotalLimit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) ultrapassará sua renda mensal cadastrada de R$ ${userIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}. Reduza este limite para salvar.`,
+      );
+      return;
     }
+    updateCategoryBudget(category.id, parsedLimit);
+    onClose();
   };
 
   return (
@@ -109,6 +126,16 @@ export default function EditBudgetModal({ category, onClose }: EditBudgetModalPr
               <Text style={styles.quickBtnText}>+ R$ 500</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Alerta de Ultrapassagem da Renda */}
+          {exceedsIncome && (
+            <View style={styles.incomeWarningCard}>
+              <Text style={styles.incomeWarningTitle}>⚠️ LIMITE EXCEDE RENDA MENSAL</Text>
+              <Text style={styles.incomeWarningText}>
+                Com este valor, o orçamento total será de {newTotalLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}, ultrapassando sua renda mensal de {userIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} em {(newTotalLimit - userIncome).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.
+              </Text>
+            </View>
+          )}
 
           {/* Previsão do Impacto */}
           <View style={[styles.previewCard, isOverBudget && styles.previewCardAlert]}>
@@ -207,6 +234,27 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   quickBtnText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700' },
+  incomeWarningCard: {
+    backgroundColor: 'rgba(248, 113, 113, 0.12)',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(248, 113, 113, 0.4)',
+  },
+  incomeWarningTitle: {
+    color: Colors.expense,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  incomeWarningText: {
+    color: Colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 16,
+  },
   previewCard: {
     backgroundColor: Colors.primaryMuted,
     padding: 12,

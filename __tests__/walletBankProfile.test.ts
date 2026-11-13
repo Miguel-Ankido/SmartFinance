@@ -43,3 +43,49 @@ describe('Wallet Bank Linkage', () => {
     expect(account.color).toBe('#820AD1');
   });
 });
+
+describe('User Monthly Income & Budget Ceiling', () => {
+  it('should support optional monthlyIncome on User object', () => {
+    const userWithIncome = {
+      id: 'usr-1',
+      name: 'Miguel Nunes',
+      email: 'miguel@syncpay.app',
+      createdAt: Date.now(),
+      role: 'user' as const,
+      monthlyIncome: 5000,
+    };
+
+    expect(userWithIncome.monthlyIncome).toBe(5000);
+  });
+
+  it('should correctly detect when sum of budget limits exceeds monthly income', () => {
+    const userIncome = 4000;
+    const limits = {
+      food: 1200,
+      transport: 500,
+      entertainment: 600,
+      bills: 1800,
+    };
+
+    const totalLimits = Object.values(limits).reduce((acc, v) => acc + v, 0); // 4100
+    const exceeds = totalLimits > userIncome;
+    expect(totalLimits).toBe(4100);
+    expect(exceeds).toBe(true);
+
+    // Adjusted within ceiling
+    const adjustedLimits = { ...limits, bills: 1600 };
+    const adjustedTotal = Object.values(adjustedLimits).reduce((acc, v) => acc + v, 0); // 3900
+    expect(adjustedTotal <= userIncome).toBe(true);
+  });
+
+  it('should flag an alert when monthly expenses surpass declared monthly income', () => {
+    const monthlyIncome = 3500;
+    const currentMonthExpenses = 3850;
+
+    const isOverIncome = currentMonthExpenses > monthlyIncome;
+    const diff = currentMonthExpenses - monthlyIncome;
+
+    expect(isOverIncome).toBe(true);
+    expect(diff).toBe(350);
+  });
+});

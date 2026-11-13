@@ -133,6 +133,14 @@ export default function ProfileScreen() {
         <Text style={styles.userName}>{user?.name || 'Usuário SmartFinance'}</Text>
         <Text style={styles.userEmail}>{user?.email || 'usuario@smartfinance.app'}</Text>
 
+        {user?.monthlyIncome && user.monthlyIncome > 0 ? (
+          <View style={styles.incomePill}>
+            <Text style={styles.incomePillText}>
+              💰 Renda: {user.monthlyIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.memberBadge}>
           <Text style={styles.memberBadgeText}>Membro desde {memberSince}</Text>
         </View>
@@ -378,6 +386,16 @@ const styles = StyleSheet.create({
   avatarInitialText: { color: '#000000', fontSize: 26, fontWeight: '900' },
   userName: { color: Colors.textPrimary, fontSize: 20, fontWeight: '800' },
   userEmail: { color: Colors.textSecondary, fontSize: 13, marginTop: 4 },
+  incomePill: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  incomePillText: { color: Colors.income, fontSize: 12, fontWeight: '800' },
   adminCard: {
     backgroundColor: Colors.surfaceCard,
     padding: 16,

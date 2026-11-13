@@ -4,11 +4,16 @@ import Svg, { Circle } from 'react-native-svg';
 import { Colors } from '../theme/colors';
 import { CategoryData } from '../types/finance';
 import { useFinance } from '../context/FinanceContext';
+import { useAuth } from '../context/AuthContext';
 import EditBudgetModal from '../components/EditBudgetModal';
 
 export default function BudgetScreen() {
   const { monthlyBudget, categories } = useFinance();
+  const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<CategoryData | null>(null);
+
+  const userIncome = user?.monthlyIncome && user.monthlyIncome > 0 ? user.monthlyIncome : 0;
+  const isOverIncome = userIncome > 0 && monthlyBudget.spent > userIncome;
 
   const radius = 45;
   const circumference = 2 * Math.PI * radius;
@@ -28,6 +33,22 @@ export default function BudgetScreen() {
         <Text style={styles.headerSubtitle}>METAS DO MÊS</Text>
         <Text style={styles.headerTitle}>Limites e Orçamento</Text>
       </View>
+
+      {/* Alerta caso os gastos do mês ultrapassem a renda cadastrada */}
+      {isOverIncome && (
+        <View style={styles.incomeAlertCard}>
+          <View style={styles.incomeAlertHeader}>
+            <Text style={styles.incomeAlertBadge}>🚨 ALERTA CRÍTICO</Text>
+            <Text style={styles.incomeAlertDiff}>
+              +{(monthlyBudget.spent - userIncome).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} acima
+            </Text>
+          </View>
+          <Text style={styles.incomeAlertTitle}>Gastos ultrapassaram sua renda mensal!</Text>
+          <Text style={styles.incomeAlertDesc}>
+            Você gastou {monthlyBudget.spent.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}, valor superior à sua renda cadastrada de {userIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.
+          </Text>
+        </View>
+      )}
 
       {/* Cartão Central de Meta Consolidada */}
       <View style={styles.gaugeCard}>
@@ -66,6 +87,14 @@ export default function BudgetScreen() {
               {monthlyBudget.limit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </Text>
           </View>
+          {userIncome > 0 && (
+            <View>
+              <Text style={styles.budgetMetricLabel}>SUA RENDA</Text>
+              <Text style={styles.incomeMetricValue}>
+                {userIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </Text>
+            </View>
+          )}
           <View style={styles.remainingBlock}>
             <Text style={styles.budgetMetricLabel}>RESTANTE</Text>
             <Text
@@ -182,6 +211,48 @@ const styles = StyleSheet.create({
   header: { marginTop: 10, marginBottom: 18 },
   headerSubtitle: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600', letterSpacing: 1 },
   headerTitle: { color: Colors.textPrimary, fontSize: 24, fontWeight: '700', marginTop: 2 },
+  incomeAlertCard: {
+    backgroundColor: 'rgba(248, 113, 113, 0.12)',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(248, 113, 113, 0.45)',
+    marginBottom: 18,
+  },
+  incomeAlertHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  incomeAlertBadge: {
+    color: Colors.expense,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  incomeAlertDiff: {
+    color: Colors.expense,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  incomeAlertTitle: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  incomeAlertDesc: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  incomeMetricValue: {
+    color: Colors.income,
+    fontSize: 17,
+    fontWeight: '800',
+    marginTop: 2,
+  },
   gaugeCard: {
     flexDirection: 'row',
     alignItems: 'center',

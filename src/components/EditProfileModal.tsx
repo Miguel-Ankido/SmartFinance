@@ -33,6 +33,7 @@ export default function EditProfileModal({ visible, onClose }: EditProfileModalP
   const [name, setName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [customUrlInput, setCustomUrlInput] = useState('');
+  const [monthlyIncomeStr, setMonthlyIncomeStr] = useState('');
   const [isUrlMode, setIsUrlMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -42,6 +43,11 @@ export default function EditProfileModal({ visible, onClose }: EditProfileModalP
       setName(user.name || '');
       const currentAvatar = user.avatarUrl || '';
       setAvatarUrl(currentAvatar);
+      if (user.monthlyIncome && user.monthlyIncome > 0) {
+        setMonthlyIncomeStr(String(user.monthlyIncome));
+      } else {
+        setMonthlyIncomeStr('');
+      }
       if (currentAvatar.startsWith('http://') || currentAvatar.startsWith('https://')) {
         setCustomUrlInput(currentAvatar);
         setIsUrlMode(true);
@@ -80,9 +86,17 @@ export default function EditProfileModal({ visible, onClose }: EditProfileModalP
 
     try {
       setIsSaving(true);
+      const cleanIncome = monthlyIncomeStr
+        .replace(/\./g, '')
+        .replace(',', '.')
+        .replace(/[^0-9.]/g, '');
+      const parsedIncome = parseFloat(cleanIncome);
+      const validIncome = !isNaN(parsedIncome) && parsedIncome >= 0 ? parsedIncome : undefined;
+
       const res = await updateUserProfile({
         name: trimmedName,
         avatarUrl: avatarUrl.trim() || undefined,
+        monthlyIncome: validIncome,
       });
 
       if (!res.success) {
@@ -155,6 +169,20 @@ export default function EditProfileModal({ visible, onClose }: EditProfileModalP
               value={name}
               onChangeText={setName}
             />
+
+            {/* Renda Mensal */}
+            <Text style={styles.fieldLabel}>RENDA MENSAL ESTIMADA (OPCIONAL)</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Ex: 4500 ou 4.500,00"
+              placeholderTextColor={Colors.textMuted}
+              value={monthlyIncomeStr}
+              onChangeText={setMonthlyIncomeStr}
+              keyboardType="numeric"
+            />
+            <Text style={styles.incomeHintText}>
+              💡 Baliza seus limites de gastos para prevenir que despesas excedam seus ganhos.
+            </Text>
 
             {/* Seleção de Avatar Presets */}
             <View style={styles.avatarSectionHeader}>
@@ -363,6 +391,13 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: 14,
     marginBottom: 6,
+  },
+  incomeHintText: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    lineHeight: 15,
+    marginBottom: 10,
+    marginTop: 2,
   },
   presetsGrid: {
     flexDirection: 'row',

@@ -23,6 +23,10 @@ export default function HomeScreen({ navigation }: any) {
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [isWeeklyModalOpen, setIsWeeklyModalOpen] = useState(false);
 
+  const userIncome = user?.monthlyIncome && user.monthlyIncome > 0 ? user.monthlyIncome : 0;
+  const isOverIncome = userIncome > 0 && totalExpenses > userIncome;
+  const isNearIncome = userIncome > 0 && !isOverIncome && totalExpenses >= userIncome * 0.85;
+
   const recent = transactions.slice(0, 3);
   const totalWeekExpense = weeklyData.reduce((acc, d) => acc + d.amount, 0);
 
@@ -37,6 +41,39 @@ export default function HomeScreen({ navigation }: any) {
       </View>
 
       <NotificationPermissionCard />
+
+      {/* Alerta de Gastos Superiores à Renda */}
+      {isOverIncome && (
+        <View style={styles.incomeAlertBanner}>
+          <View style={styles.incomeAlertHeader}>
+            <View style={styles.incomeAlertBadge}>
+              <Text style={styles.incomeAlertBadgeText}>🚨 ALERTA DE ORÇAMENTO</Text>
+            </View>
+            <Text style={styles.incomeAlertDiff}>
+              +{(totalExpenses - userIncome).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} acima
+            </Text>
+          </View>
+          <Text style={styles.incomeAlertTitle}>Gastos ultrapassaram sua renda mensal!</Text>
+          <Text style={styles.incomeAlertDescription}>
+            Suas despesas ({totalExpenses.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) ultrapassaram a renda cadastrada ({userIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}).
+          </Text>
+        </View>
+      )}
+
+      {/* Alerta Preventivo de 85%+ da Renda */}
+      {isNearIncome && (
+        <View style={styles.incomeWarningBanner}>
+          <View style={styles.incomeAlertHeader}>
+            <Text style={styles.incomeWarningTitle}>⚠️ ATENÇÃO AOS GASTOS</Text>
+            <Text style={styles.incomeWarningPercent}>
+              {Math.round((totalExpenses / userIncome) * 100)}% da renda
+            </Text>
+          </View>
+          <Text style={styles.incomeWarningText}>
+            Você já comprometeu a maior parte da sua renda cadastrada ({userIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}).
+          </Text>
+        </View>
+      )}
 
       <View style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>SALDO TOTAL CONSOLIDADO</Text>
@@ -168,6 +205,72 @@ const styles = StyleSheet.create({
   welcomeLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600', letterSpacing: 1 },
   userName: { color: Colors.textPrimary, fontSize: 22, fontWeight: '700', marginTop: 2 },
   avatarPlaceholder: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#ffffff' },
+  incomeAlertBanner: {
+    backgroundColor: 'rgba(248, 113, 113, 0.12)',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(248, 113, 113, 0.45)',
+    marginBottom: 16,
+  },
+  incomeWarningBanner: {
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    marginBottom: 16,
+  },
+  incomeAlertHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  incomeAlertBadge: {
+    backgroundColor: 'rgba(248, 113, 113, 0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  incomeAlertBadgeText: {
+    color: Colors.expense,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  incomeAlertDiff: {
+    color: Colors.expense,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  incomeAlertTitle: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  incomeAlertDescription: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  incomeWarningTitle: {
+    color: '#f59e0b',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  incomeWarningPercent: {
+    color: '#f59e0b',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  incomeWarningText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+  },
   balanceCard: {
     backgroundColor: Colors.surfaceCard,
     padding: 20,
