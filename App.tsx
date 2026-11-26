@@ -155,7 +155,7 @@ function SwipeableTabNavigator() {
 }
 
 function RootNavigator() {
-  const { user, isLoading, hasCompletedOnboarding } = useAuth();
+  const { user, isLoading, hasCompletedOnboarding, isPasswordRecovery } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
@@ -182,7 +182,7 @@ function RootNavigator() {
     );
   }
 
-  if (!user) {
+  if (!user || isPasswordRecovery) {
     return <AuthScreen />;
   }
 

@@ -1,31 +1,43 @@
 package com.smartfinance
 
+import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
+import android.util.Base64
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 class NotificationModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
     companion object {
         const val MODULE_NAME = "NotificationModule"
+        private const val PICK_PROFILE_IMAGE_REQUEST = 9102
+        private const val MAX_AVATAR_DIMENSION_PX = 256
         private var eventEmitterContext: ReactApplicationContext? = null
 
         fun sendEvent(eventName: String, params: WritableMap?) {
@@ -56,12 +68,139 @@ class NotificationModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    private var pickerPromise: Promise? = null
+
+    private val activityEventListener = object : BaseActivityEventListener() {
+        override fun onActivityResult(
+            activity: Activity,
+            requestCode: Int,
+            resultCode: Int,
+            data: Intent?,
+        ) {
+            if (requestCode != PICK_PROFILE_IMAGE_REQUEST) return
+
+            val promise = pickerPromise
+            pickerPromise = null
+            if (promise == null) return
+
+            if (resultCode != Activity.RESULT_OK || data?.data == null) {
+                promise.resolve(null)
+                return
+            }
+
+            val imageUri = data.data!!
+            Thread {
+                try {
+                    val dataUri = encodeResizedProfileImage(imageUri)
+                    promise.resolve(dataUri)
+                } catch (e: Exception) {
+                    Log.e(MODULE_NAME, "Erro ao processar foto de perfil: ${e.message}", e)
+                    promise.reject("IMAGE_PROCESS_ERROR", e.message ?: "Falha ao processar imagem.")
+                }
+            }.start()
+        }
+    }
+
     init {
         eventEmitterContext = reactContext
+        reactContext.addActivityEventListener(activityEventListener)
+    }
+
+    override fun invalidate() {
+        reactContext.removeActivityEventListener(activityEventListener)
+        pickerPromise?.resolve(null)
+        pickerPromise = null
+        super.invalidate()
     }
 
     override fun getName(): String {
         return MODULE_NAME
+    }
+
+    @ReactMethod
+    fun pickProfileImage(promise: Promise) {
+        val currentActivity = reactContext.currentActivity
+        if (currentActivity == null) {
+            promise.reject("NO_ACTIVITY", "Não foi possível abrir a galeria neste momento.")
+            return
+        }
+
+        pickerPromise?.resolve(null)
+        pickerPromise = promise
+
+        try {
+            val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                type = "image/*"
+                addCategory(Intent.CATEGORY_OPENABLE)
+            }
+            val chooser = Intent.createChooser(intent, "Selecionar foto de perfil")
+            currentActivity.startActivityForResult(chooser, PICK_PROFILE_IMAGE_REQUEST)
+        } catch (e: Exception) {
+            pickerPromise = null
+            promise.reject("IMAGE_PICKER_ERROR", e.message ?: "Erro ao abrir seletor de imagens.")
+        }
+    }
+
+    private fun encodeResizedProfileImage(uri: Uri): String {
+        val resolver = reactContext.contentResolver
+
+        val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream, null, boundsOptions)
+        } ?: throw IllegalStateException("Não foi possível ler a imagem selecionada.")
+
+        var sampleSize = 1
+        val maxOrigSide = max(boundsOptions.outWidth, boundsOptions.outHeight)
+        while (maxOrigSide / sampleSize > MAX_AVATAR_DIMENSION_PX * 2) {
+            sampleSize *= 2
+        }
+
+        val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        var bitmap = resolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream, null, decodeOptions)
+        } ?: throw IllegalStateException("Não foi possível decodificar a imagem selecionada.")
+
+        val rotationDegrees = try {
+            resolver.openInputStream(uri)?.use { stream ->
+                val exif = ExifInterface(stream)
+                when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                    else -> 0f
+                }
+            } ?: 0f
+        } catch (_: Exception) {
+            0f
+        }
+
+        if (rotationDegrees != 0f) {
+            val matrix = Matrix().apply { postRotate(rotationDegrees) }
+            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            if (rotated != bitmap) {
+                bitmap.recycle()
+                bitmap = rotated
+            }
+        }
+
+        val maxCurrentSide = max(bitmap.width, bitmap.height)
+        if (maxCurrentSide > MAX_AVATAR_DIMENSION_PX && maxCurrentSide > 0) {
+            val scale = MAX_AVATAR_DIMENSION_PX.toFloat() / maxCurrentSide.toFloat()
+            val targetW = max(1, (bitmap.width * scale).roundToInt())
+            val targetH = max(1, (bitmap.height * scale).roundToInt())
+            val scaled = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
+            if (scaled != bitmap) {
+                bitmap.recycle()
+                bitmap = scaled
+            }
+        }
+
+        val outputStream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 76, outputStream)
+        bitmap.recycle()
+
+        val base64 = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+        return "data:image/jpeg;base64,$base64"
     }
 
     @ReactMethod

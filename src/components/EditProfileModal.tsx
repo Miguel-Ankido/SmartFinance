@@ -11,9 +11,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  NativeModules,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
+import { isImageAvatarUri } from '../utils/profileBudgetUtils';
+
+const { NotificationModule } = NativeModules;
 
 interface EditProfileModalProps {
   visible: boolean;
@@ -35,6 +39,7 @@ export default function EditProfileModal({ visible, onClose }: EditProfileModalP
   const [customUrlInput, setCustomUrlInput] = useState('');
   const [monthlyIncomeStr, setMonthlyIncomeStr] = useState('');
   const [isUrlMode, setIsUrlMode] = useState(false);
+  const [isPickingImage, setIsPickingImage] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -61,18 +66,44 @@ export default function EditProfileModal({ visible, onClose }: EditProfileModalP
 
   const handleSelectPreset = (emoji: string) => {
     setAvatarUrl(emoji);
+    setCustomUrlInput('');
     setIsUrlMode(false);
+    setErrorMessage('');
   };
 
   const handleClearAvatar = () => {
     setAvatarUrl('');
     setCustomUrlInput('');
     setIsUrlMode(false);
+    setErrorMessage('');
   };
 
   const handleApplyCustomUrl = (url: string) => {
     setCustomUrlInput(url);
     setAvatarUrl(url.trim());
+    setErrorMessage('');
+  };
+
+  const handlePickFromGallery = async () => {
+    setErrorMessage('');
+    if (!NotificationModule?.pickProfileImage) {
+      setErrorMessage('Seletor de galeria indisponível neste dispositivo. Use um link de foto HTTPS ou emoji.');
+      return;
+    }
+
+    try {
+      setIsPickingImage(true);
+      const dataUri: string | null = await NotificationModule.pickProfileImage();
+      if (dataUri) {
+        setAvatarUrl(dataUri);
+        setCustomUrlInput('');
+        setIsUrlMode(false);
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Não foi possível carregar a foto da galeria.');
+    } finally {
+      setIsPickingImage(false);
+    }
   };
 
   const handleSave = async () => {
@@ -112,7 +143,7 @@ export default function EditProfileModal({ visible, onClose }: EditProfileModalP
     }
   };
 
-  const isHttpAvatar = avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://');
+  const isImageAvatar = isImageAvatarUri(avatarUrl);
   const userInitial = name.trim() ? name.trim().charAt(0).toUpperCase() : (user?.name?.charAt(0).toUpperCase() || 'U');
 
   return (
@@ -131,7 +162,7 @@ export default function EditProfileModal({ visible, onClose }: EditProfileModalP
 
           <Text style={styles.mainTitle}>Editar Perfil</Text>
           <Text style={styles.mainSubtitle}>
-            Atualize seu nome de exibição e escolha um avatar personalizado.
+            Atualize seu nome, foto de perfil (que também aparece na Home) e renda mensal.
           </Text>
 
           {errorMessage ? (
@@ -144,11 +175,11 @@ export default function EditProfileModal({ visible, onClose }: EditProfileModalP
             {/* Avatar Preview Card */}
             <View style={styles.previewCard}>
               <View style={styles.avatarPreview}>
-                {isHttpAvatar ? (
+                {isImageAvatar ? (
                   <Image
                     source={{ uri: avatarUrl }}
                     style={styles.avatarImage}
-                    onError={() => setErrorMessage('Não foi possível carregar a imagem da URL.')}
+                    onError={() => setErrorMessage('Não foi possível carregar a imagem selecionada.')}
                   />
                 ) : avatarUrl ? (
                   <Text style={styles.avatarEmoji}>{avatarUrl}</Text>
@@ -158,6 +189,18 @@ export default function EditProfileModal({ visible, onClose }: EditProfileModalP
               </View>
               <Text style={styles.previewName}>{name.trim() || 'Seu Nome'}</Text>
               <Text style={styles.previewEmail}>{user?.email || 'usuario@smartfinance.app'}</Text>
+
+              <TouchableOpacity
+                style={styles.galleryBtn}
+                activeOpacity={0.8}
+                disabled={isPickingImage}
+                onPress={handlePickFromGallery}>
+                {isPickingImage ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <Text style={styles.galleryBtnText}>📷 Escolher Foto da Galeria</Text>
+                )}
+              </TouchableOpacity>
             </View>
 
             {/* Nome do Usuário */}
@@ -360,6 +403,23 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 12,
     marginTop: 2,
+  },
+  galleryBtn: {
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: Colors.primaryMuted,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  galleryBtnText: {
+    color: Colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
   },
   fieldLabel: {
     color: Colors.textSecondary,

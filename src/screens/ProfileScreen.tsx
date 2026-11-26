@@ -14,6 +14,7 @@ import {
   loadAndSyncMonitoredBanks,
   saveAndSyncMonitoredBanks,
 } from '../services/bankMonitorService';
+import { isImageAvatarUri } from '../utils/profileBudgetUtils';
 
 const { NotificationModule } = NativeModules;
 
@@ -116,7 +117,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         {user?.avatarUrl ? (
-          user.avatarUrl.startsWith('http://') || user.avatarUrl.startsWith('https://') ? (
+          isImageAvatarUri(user.avatarUrl) ? (
             <View style={styles.avatarLargeImageWrapper}>
               <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
             </View>

@@ -6,6 +6,7 @@ import { CategoryData } from '../types/finance';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
 import EditBudgetModal from '../components/EditBudgetModal';
+import { evaluateBudgetExtrapolation } from '../utils/profileBudgetUtils';
 
 export default function BudgetScreen() {
   const { monthlyBudget, categories } = useFinance();
@@ -14,6 +15,8 @@ export default function BudgetScreen() {
 
   const userIncome = user?.monthlyIncome && user.monthlyIncome > 0 ? user.monthlyIncome : 0;
   const isOverIncome = userIncome > 0 && monthlyBudget.spent > userIncome;
+  const isTotalBudgetOverIncome = userIncome > 0 && monthlyBudget.limit > userIncome;
+  const totalBudgetExcess = isTotalBudgetOverIncome ? monthlyBudget.limit - userIncome : 0;
 
   const radius = 45;
   const circumference = 2 * Math.PI * radius;
@@ -33,6 +36,22 @@ export default function BudgetScreen() {
         <Text style={styles.headerSubtitle}>METAS DO MÊS</Text>
         <Text style={styles.headerTitle}>Limites e Orçamento</Text>
       </View>
+
+      {/* Alerta caso a soma dos tetos das metas ultrapasse a renda */}
+      {isTotalBudgetOverIncome && (
+        <View style={styles.extrapolatedBanner}>
+          <View style={styles.incomeAlertHeader}>
+            <Text style={styles.extrapolatedBadge}>⚠️ LIMITE EXTRAPOLADO NAS METAS</Text>
+            <Text style={styles.extrapolatedDiff}>
+              +{totalBudgetExcess.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} acima
+            </Text>
+          </View>
+          <Text style={styles.incomeAlertTitle}>O teto somado das metas extrapola sua renda!</Text>
+          <Text style={styles.incomeAlertDesc}>
+            As metas somam {monthlyBudget.limit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}, acima da renda cadastrada de {userIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.
+          </Text>
+        </View>
+      )}
 
       {/* Alerta caso os gastos do mês ultrapassem a renda cadastrada */}
       {isOverIncome && (
@@ -82,8 +101,17 @@ export default function BudgetScreen() {
 
         <View style={styles.budgetMetrics}>
           <View>
-            <Text style={styles.budgetMetricLabel}>TETO TOTAL</Text>
-            <Text style={styles.budgetLimitValue}>
+            <View style={styles.metricLabelRow}>
+              <Text style={styles.budgetMetricLabel}>TETO TOTAL</Text>
+              {isTotalBudgetOverIncome && (
+                <Text style={styles.extrapolatedMiniTag}>EXTRAPOLADO</Text>
+              )}
+            </View>
+            <Text
+              style={[
+                styles.budgetLimitValue,
+                isTotalBudgetOverIncome && styles.budgetLimitValueExtrapolated,
+              ]}>
               {monthlyBudget.limit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </Text>
           </View>
@@ -115,7 +143,13 @@ export default function BudgetScreen() {
 
       {/* Lista Interativa de Metas por Categoria */}
       {categories.map(item => {
-        const hasLimit = item.budgetLimit > 0;
+        const evalRes = evaluateBudgetExtrapolation(
+          item.spent,
+          item.budgetLimit,
+          monthlyBudget.limit,
+          userIncome,
+        );
+        const hasLimit = evalRes.hasLimit;
         const pct = hasLimit ? Math.round((item.spent / item.budgetLimit) * 100) : 0;
 
         // Regra de Cores e Alertas do Épico 2:
@@ -139,7 +173,7 @@ export default function BudgetScreen() {
         } else if (pct > 90) {
           barColor = '#ef4444'; // Vermelho
           statusBadge = {
-            text: pct >= 100 ? 'ESTOURADO' : 'CRÍTICO',
+            text: pct > 100 ? 'LIMITE EXTRAPOLADO' : pct === 100 ? 'ESTOURADO' : 'CRÍTICO',
             textColor: '#ef4444',
             bgColor: 'rgba(239, 68, 68, 0.16)',
           };
@@ -152,10 +186,26 @@ export default function BudgetScreen() {
           };
         }
 
+        const extrapolationMessage = evalRes.isSpentExtrapolated && evalRes.isSingleLimitOverIncome
+          ? `⚠️ Limite extrapolado: gastos superaram o teto em ${evalRes.spentExcessAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} e a meta ultrapassa sua renda em ${evalRes.singleIncomeExcessAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`
+          : evalRes.isSpentExtrapolated
+            ? `⚠️ Limite extrapolado na meta: gasto ultrapassou em ${evalRes.spentExcessAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`
+            : evalRes.isSingleLimitOverIncome
+              ? `⚠️ Limite extrapolado na meta: teto definido ultrapassa sua renda mensal em ${evalRes.singleIncomeExcessAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`
+              : evalRes.isTotalBudgetOverIncome
+                ? `⚠️ Limite extrapolado: soma das metas ultrapassa sua renda mensal em ${evalRes.totalIncomeExcessAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`
+                : null;
+
         return (
           <TouchableOpacity
             key={item.id}
-            style={styles.categoryCard}
+            style={[
+              styles.categoryCard,
+              evalRes.isSpentExtrapolated
+                ? styles.categoryCardDanger
+                : (evalRes.isSingleLimitOverIncome || evalRes.isTotalBudgetOverIncome) &&
+                  styles.categoryCardWarning,
+            ]}
             activeOpacity={0.7}
             onPress={() => setSelectedCategory(item)}>
             <View style={styles.categoryHeader}>
@@ -167,6 +217,11 @@ export default function BudgetScreen() {
                     {statusBadge.text}
                   </Text>
                 </View>
+                {(evalRes.isSingleLimitOverIncome || evalRes.isTotalBudgetOverIncome) && (
+                  <View style={styles.extrapolatedChip}>
+                    <Text style={styles.extrapolatedChipText}>LIMITE EXTRAPOLADO</Text>
+                  </View>
+                )}
               </View>
 
               <Text style={styles.categoryNumbers}>
@@ -189,6 +244,22 @@ export default function BudgetScreen() {
                 ]}
               />
             </View>
+
+            {extrapolationMessage && (
+              <View
+                style={[
+                  styles.metaExtrapolationBox,
+                  evalRes.isSpentExtrapolated && styles.metaExtrapolationBoxDanger,
+                ]}>
+                <Text
+                  style={[
+                    styles.metaExtrapolationText,
+                    evalRes.isSpentExtrapolated && styles.metaExtrapolationTextDanger,
+                  ]}>
+                  {extrapolationMessage}
+                </Text>
+              </View>
+            )}
 
             <View style={styles.cardFooter}>
               <Text style={styles.footerPctText}>
@@ -218,6 +289,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(248, 113, 113, 0.45)',
     marginBottom: 18,
+  },
+  extrapolatedBanner: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.45)',
+    marginBottom: 14,
+  },
+  extrapolatedBadge: {
+    color: '#fbbf24',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  extrapolatedDiff: {
+    color: '#fbbf24',
+    fontSize: 12,
+    fontWeight: '800',
   },
   incomeAlertHeader: {
     flexDirection: 'row',
@@ -269,9 +359,21 @@ const styles = StyleSheet.create({
   gaugePercentage: { fontSize: 18, fontWeight: '800' },
   gaugeSubtext: { color: Colors.textSecondary, fontSize: 9, fontWeight: '700', marginTop: 1 },
   budgetMetrics: { justifyContent: 'center' },
+  metricLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  extrapolatedMiniTag: {
+    color: '#fbbf24',
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+    fontSize: 8,
+    fontWeight: '800',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
   remainingBlock: { marginTop: 10 },
   budgetMetricLabel: { color: Colors.textSecondary, fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
   budgetLimitValue: { color: Colors.textPrimary, fontSize: 17, fontWeight: '800', marginTop: 2 },
+  budgetLimitValueExtrapolated: { color: '#fbbf24' },
   budgetRemainingValue: { color: Colors.primary, fontSize: 17, fontWeight: '700', marginTop: 2 },
   remainingAlert: { color: '#ef4444' },
   sectionHeaderRow: {
@@ -290,8 +392,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  categoryHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, alignItems: 'center' },
-  categoryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  categoryCardWarning: {
+    borderColor: 'rgba(245, 158, 11, 0.5)',
+  },
+  categoryCardDanger: {
+    borderColor: 'rgba(239, 68, 68, 0.55)',
+  },
+  categoryHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, alignItems: 'flex-start' },
+  categoryTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, flex: 1, marginRight: 8 },
   catDot: { width: 8, height: 8, borderRadius: 4 },
   categoryName: { color: Colors.textPrimary, fontSize: 14, fontWeight: '600' },
   badgeContainer: {
@@ -300,6 +408,42 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   badgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+  extrapolatedChip: {
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  extrapolatedChipText: {
+    color: '#fbbf24',
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  metaExtrapolationBox: {
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+  },
+  metaExtrapolationBoxDanger: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+  },
+  metaExtrapolationText: {
+    color: '#fbbf24',
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 15,
+  },
+  metaExtrapolationTextDanger: {
+    color: '#fca5a5',
+  },
   categoryNumbers: { color: Colors.textPrimary, fontSize: 13, fontWeight: '700' },
   categoryLimit: { color: Colors.textMuted, fontSize: 11, fontWeight: '500' },
   progressBarBackground: { height: 8, backgroundColor: '#18242a', borderRadius: 4, overflow: 'hidden' },

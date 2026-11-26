@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 import { Colors } from '../theme/colors';
 import { Transaction } from '../types/finance';
@@ -8,6 +8,7 @@ import { useFinance } from '../context/FinanceContext';
 import TransactionDetailModal from '../components/TransactionDetailModal';
 import WeeklyOutflowDetailModal from '../components/WeeklyOutflowDetailModal';
 import { NotificationPermissionCard } from '../components/NotificationPermissionCard';
+import { isImageAvatarUri } from '../utils/profileBudgetUtils';
 
 const formatCompact = (value: number): string => {
   if (value >= 1000) {
@@ -20,8 +21,16 @@ export default function HomeScreen({ navigation }: any) {
   const { user } = useAuth();
   const { totalBalance, totalIncome, totalExpenses, transactions, weeklyData } = useFinance();
   const firstName = user?.name ? user.name.split(' ')[0] : 'Usuário';
+  const userInitial = user?.name ? user.name.trim().charAt(0).toUpperCase() : 'U';
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [isWeeklyModalOpen, setIsWeeklyModalOpen] = useState(false);
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
+
+  useEffect(() => {
+    setAvatarLoadError(false);
+  }, [user?.avatarUrl]);
+
+  const showImageAvatar = isImageAvatarUri(user?.avatarUrl) && !avatarLoadError;
 
   const userIncome = user?.monthlyIncome && user.monthlyIncome > 0 ? user.monthlyIncome : 0;
   const isOverIncome = userIncome > 0 && totalExpenses > userIncome;
@@ -37,7 +46,23 @@ export default function HomeScreen({ navigation }: any) {
           <Text style={styles.welcomeLabel}>BEM-VINDO</Text>
           <Text style={styles.userName}>Olá, {firstName}</Text>
         </View>
-        <View style={styles.avatarPlaceholder} />
+        <TouchableOpacity
+          style={styles.avatarButton}
+          activeOpacity={0.8}
+          accessibilityLabel="Abrir Perfil"
+          onPress={() => navigation?.navigate?.('Perfil')}>
+          {showImageAvatar ? (
+            <Image
+              source={{ uri: user!.avatarUrl! }}
+              style={styles.avatarImage}
+              onError={() => setAvatarLoadError(true)}
+            />
+          ) : user?.avatarUrl && !isImageAvatarUri(user.avatarUrl) ? (
+            <Text style={styles.avatarEmoji}>{user.avatarUrl}</Text>
+          ) : (
+            <Text style={styles.avatarInitial}>{userInitial}</Text>
+          )}
+        </TouchableOpacity>
       </View>
 
       <NotificationPermissionCard />
@@ -204,7 +229,30 @@ const styles = StyleSheet.create({
   },
   welcomeLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600', letterSpacing: 1 },
   userName: { color: Colors.textPrimary, fontSize: 22, fontWeight: '700', marginTop: 2 },
-  avatarPlaceholder: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#ffffff' },
+  avatarButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: 'rgba(168, 85, 247, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 22,
+  },
+  avatarEmoji: {
+    fontSize: 22,
+  },
+  avatarInitial: {
+    color: '#000000',
+    fontSize: 18,
+    fontWeight: '900',
+  },
   incomeAlertBanner: {
     backgroundColor: 'rgba(248, 113, 113, 0.12)',
     padding: 16,

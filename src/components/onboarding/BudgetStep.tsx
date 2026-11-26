@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Animated,
-  Alert,
 } from 'react-native';
 import { Colors } from '../../theme/colors';
 import { CategoryId } from '../../types/finance';
@@ -81,14 +80,6 @@ export default function BudgetStep({ onNext, onBack }: BudgetStepProps) {
   }, 0);
 
   const handleContinue = async () => {
-    if (userIncome > 0 && totalCalculated > userIncome) {
-      Alert.alert(
-        'Limite Superior à Renda',
-        `A soma dos limites (R$ ${totalCalculated.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) não pode ultrapassar a sua renda mensal declarada (R$ ${userIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}). Reduza os valores para manter o equilíbrio financeiro.`,
-      );
-      return;
-    }
-
     try {
       setIsSubmitting(true);
       // Salva os limites configurados no SQLite local e dispara sync no Supabase
@@ -141,7 +132,7 @@ export default function BudgetStep({ onNext, onBack }: BudgetStepProps) {
           {userIncome > 0 && totalCalculated > userIncome && (
             <View style={styles.exceedAlertBox}>
               <Text style={styles.exceedAlertText}>
-                ⚠️ A soma dos limites ultrapassa sua renda em {(totalCalculated - userIncome).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Reduza os valores para continuar.
+                ⚠️ Limite extrapolado: a soma das metas ultrapassa sua renda em {(totalCalculated - userIncome).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Você pode continuar mesmo assim — a meta exibirá este aviso.
               </Text>
             </View>
           )}

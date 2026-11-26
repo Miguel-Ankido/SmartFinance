@@ -15,20 +15,43 @@ import {
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
+import { normalizeOtpCode } from '../utils/profileBudgetUtils';
 
 const LOGO_IMG = require('../assets/logo.png');
 
+type AuthMode = 'LOGIN' | 'REGISTER' | 'FORGOT';
+type ForgotStep = 'REQUEST_EMAIL' | 'VERIFY_CODE' | 'NEW_PASSWORD';
+
 export default function AuthScreen() {
-  const { login, register } = useAuth();
-  const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
+  const {
+    login,
+    register,
+    requestPasswordResetCode,
+    verifyPasswordResetCode,
+    completePasswordReset,
+    cancelPasswordRecovery,
+    isPasswordRecovery,
+  } = useAuth();
+
+  const [mode, setMode] = useState<AuthMode>(() =>
+    isPasswordRecovery ? 'FORGOT' : 'LOGIN',
+  );
+  const [forgotStep, setForgotStep] = useState<ForgotStep>(() =>
+    isPasswordRecovery ? 'NEW_PASSWORD' : 'REQUEST_EMAIL',
+  );
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [monthlyIncomeStr, setMonthlyIncomeStr] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
@@ -45,9 +68,136 @@ export default function AuthScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    if (resendCooldown <= 0) {
+      return undefined;
+    }
+    const timer = setTimeout(() => setResendCooldown(prev => Math.max(0, prev - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const handleOpenForgot = () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setOtpCode('');
+    setNewPassword('');
+    setConfirmNewPassword('');
+    setForgotStep(isPasswordRecovery ? 'NEW_PASSWORD' : 'REQUEST_EMAIL');
+    setMode('FORGOT');
+  };
+
+  const handleBackToLogin = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setOtpCode('');
+    setNewPassword('');
+    setConfirmNewPassword('');
+    await cancelPasswordRecovery();
+    setMode('LOGIN');
+    setForgotStep('REQUEST_EMAIL');
+  };
+
+  const handleSendResetCode = async (isResend = false) => {
+    Keyboard.dismiss();
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setErrorMessage('Informe um e-mail cadastrado válido.');
+      return;
+    }
+
+    setLoading(true);
+    const res = await requestPasswordResetCode(cleanEmail);
+    setLoading(false);
+
+    if (!res.success) {
+      setErrorMessage(res.error || 'Não foi possível enviar o código.');
+      return;
+    }
+
+    setResendCooldown(60);
+    setForgotStep('VERIFY_CODE');
+    setSuccessMessage(
+      isResend
+        ? `Novo código enviado! Caso ${cleanEmail} esteja cadastrado, verifique sua caixa de entrada e spam.`
+        : `Enviamos um código de recuperação para ${cleanEmail} (caso esteja cadastrado). Verifique a caixa de entrada e spam.`,
+    );
+  };
+
+  const handleVerifyCode = async () => {
+    Keyboard.dismiss();
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    const cleanCode = normalizeOtpCode(otpCode);
+    if (cleanCode.length < 6) {
+      setErrorMessage('Digite o código completo recebido no e-mail.');
+      return;
+    }
+
+    setLoading(true);
+    const res = await verifyPasswordResetCode(email, cleanCode);
+    setLoading(false);
+
+    if (!res.success) {
+      setErrorMessage(res.error || 'Código inválido ou expirado.');
+      return;
+    }
+
+    setForgotStep('NEW_PASSWORD');
+    setSuccessMessage('Código validado! Agora cadastre sua nova senha de acesso.');
+  };
+
+  const handleSaveNewPassword = async () => {
+    Keyboard.dismiss();
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (newPassword.length < 6) {
+      setErrorMessage('A nova senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setErrorMessage('As senhas digitadas não coincidem.');
+      return;
+    }
+
+    setLoading(true);
+    const res = await completePasswordReset(newPassword);
+    setLoading(false);
+
+    if (!res.success) {
+      setErrorMessage(res.error || 'Erro ao redefinir a senha.');
+      return;
+    }
+
+    setPassword('');
+    setConfirmPassword('');
+    setNewPassword('');
+    setConfirmNewPassword('');
+    setOtpCode('');
+    setMode('LOGIN');
+    setForgotStep('REQUEST_EMAIL');
+    setSuccessMessage('Senha atualizada com sucesso! Entre agora com sua nova senha.');
+  };
+
   const handleSubmit = async () => {
     Keyboard.dismiss();
     setErrorMessage('');
+    setSuccessMessage('');
+
+    if (mode === 'FORGOT') {
+      if (forgotStep === 'REQUEST_EMAIL') {
+        await handleSendResetCode(false);
+      } else if (forgotStep === 'VERIFY_CODE') {
+        await handleVerifyCode();
+      } else {
+        await handleSaveNewPassword();
+      }
+      return;
+    }
 
     if (mode === 'REGISTER') {
       if (!name.trim()) {
@@ -95,6 +245,40 @@ export default function AuthScreen() {
     }
   };
 
+  const renderCardTitle = () => {
+    if (mode === 'REGISTER') return 'Comece Gratuitamente';
+    if (mode === 'FORGOT') {
+      if (forgotStep === 'REQUEST_EMAIL') return 'Recuperar Senha';
+      if (forgotStep === 'VERIFY_CODE') return 'Validar Código';
+      return 'Definir Nova Senha';
+    }
+    return 'Acesse sua Conta';
+  };
+
+  const renderCardSubtitle = () => {
+    if (mode === 'REGISTER') return 'Gerencie gastos automáticos e limites em um só lugar';
+    if (mode === 'FORGOT') {
+      if (forgotStep === 'REQUEST_EMAIL') {
+        return 'Enviaremos um código de verificação diretamente para o e-mail cadastrado.';
+      }
+      if (forgotStep === 'VERIFY_CODE') {
+        return `Digite o código enviado para ${email.trim().toLowerCase()}`;
+      }
+      return 'Escolha uma nova senha segura com pelo menos 6 caracteres.';
+    }
+    return 'Informe seus dados para acessar suas finanças';
+  };
+
+  const renderPrimaryButtonLabel = () => {
+    if (mode === 'REGISTER') return 'CRIAR CONTA SYNCPAY';
+    if (mode === 'FORGOT') {
+      if (forgotStep === 'REQUEST_EMAIL') return 'ENVIAR CÓDIGO POR E-MAIL';
+      if (forgotStep === 'VERIFY_CODE') return 'CONFIRMAR CÓDIGO';
+      return 'SALVAR NOVA SENHA';
+    }
+    return 'ACESSAR CONTA';
+  };
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <KeyboardAvoidingView
@@ -104,7 +288,6 @@ export default function AuthScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
-          
           {/* Cabeçalho da Marca SyncPay */}
           {!isKeyboardVisible ? (
             <View style={styles.brandContainer}>
@@ -118,39 +301,82 @@ export default function AuthScreen() {
           )}
 
           {/* Alternador de Modo: Entrar / Criar Conta */}
-          <View style={styles.modeSwitcher}>
-            <TouchableOpacity
-              style={[styles.modeButton, mode === 'LOGIN' && styles.modeButtonActive]}
-              onPress={() => {
-                setMode('LOGIN');
-                setErrorMessage('');
-              }}>
-              <Text style={[styles.modeButtonText, mode === 'LOGIN' && styles.modeButtonTextActive]}>
-                ENTRAR
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeButton, mode === 'REGISTER' && styles.modeButtonActive]}
-              onPress={() => {
-                setMode('REGISTER');
-                setErrorMessage('');
-              }}>
-              <Text style={[styles.modeButtonText, mode === 'REGISTER' && styles.modeButtonTextActive]}>
-                CRIAR CONTA
-              </Text>
-            </TouchableOpacity>
-          </View>
+          {mode !== 'FORGOT' && (
+            <View style={styles.modeSwitcher}>
+              <TouchableOpacity
+                style={[styles.modeButton, mode === 'LOGIN' && styles.modeButtonActive]}
+                onPress={() => {
+                  setMode('LOGIN');
+                  setErrorMessage('');
+                  setSuccessMessage('');
+                }}>
+                <Text style={[styles.modeButtonText, mode === 'LOGIN' && styles.modeButtonTextActive]}>
+                  ENTRAR
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeButton, mode === 'REGISTER' && styles.modeButtonActive]}
+                onPress={() => {
+                  setMode('REGISTER');
+                  setErrorMessage('');
+                  setSuccessMessage('');
+                }}>
+                <Text
+                  style={[styles.modeButtonText, mode === 'REGISTER' && styles.modeButtonTextActive]}>
+                  CRIAR CONTA
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Formulário */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              {mode === 'LOGIN' ? 'Acesse sua Conta' : 'Comece Gratuitamente'}
-            </Text>
-            <Text style={styles.cardSubtitle}>
-              {mode === 'LOGIN'
-                ? 'Informe seus dados para acessar suas finanças'
-                : 'Gerencie gastos automáticos e limites em um só lugar'}
-            </Text>
+            {mode === 'FORGOT' && (
+              <View style={styles.stepIndicatorRow}>
+                <View
+                  style={[
+                    styles.stepPill,
+                    forgotStep === 'REQUEST_EMAIL' && styles.stepPillActive,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.stepPillText,
+                      forgotStep === 'REQUEST_EMAIL' && styles.stepPillTextActive,
+                    ]}>
+                    1. E-mail
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.stepPill,
+                    forgotStep === 'VERIFY_CODE' && styles.stepPillActive,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.stepPillText,
+                      forgotStep === 'VERIFY_CODE' && styles.stepPillTextActive,
+                    ]}>
+                    2. Código
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.stepPill,
+                    forgotStep === 'NEW_PASSWORD' && styles.stepPillActive,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.stepPillText,
+                      forgotStep === 'NEW_PASSWORD' && styles.stepPillTextActive,
+                    ]}>
+                    3. Nova Senha
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <Text style={styles.cardTitle}>{renderCardTitle()}</Text>
+            <Text style={styles.cardSubtitle}>{renderCardSubtitle()}</Text>
 
             {errorMessage ? (
               <View style={styles.errorBox}>
@@ -158,67 +384,167 @@ export default function AuthScreen() {
               </View>
             ) : null}
 
-            {mode === 'REGISTER' ? (
-              <>
-                <Text style={styles.inputLabel}>NOME COMPLETO</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ex: Miguel Nunes"
-                  placeholderTextColor={Colors.textMuted}
-                  value={name}
-                  onChangeText={setName}
-                  autoCapitalize="words"
-                />
-              </>
+            {successMessage ? (
+              <View style={styles.successBox}>
+                <Text style={styles.successText}>✓ {successMessage}</Text>
+              </View>
             ) : null}
 
-            <Text style={styles.inputLabel}>E-MAIL</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="seu.email@exemplo.com"
-              placeholderTextColor={Colors.textMuted}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-
-            <Text style={styles.inputLabel}>SENHA</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="••••••••"
-              placeholderTextColor={Colors.textMuted}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-
-            {mode === 'REGISTER' ? (
+            {mode === 'FORGOT' ? (
               <>
-                <Text style={styles.inputLabel}>CONFIRME SUA SENHA</Text>
+                {forgotStep === 'REQUEST_EMAIL' && (
+                  <>
+                    <Text style={styles.inputLabel}>E-MAIL CADASTRADO</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="seu.email@exemplo.com"
+                      placeholderTextColor={Colors.textMuted}
+                      value={email}
+                      onChangeText={setEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </>
+                )}
+
+                {forgotStep === 'VERIFY_CODE' && (
+                  <>
+                    <Text style={styles.inputLabel}>CÓDIGO RECEBIDO NO E-MAIL</Text>
+                    <TextInput
+                      style={[styles.input, styles.otpInput]}
+                      placeholder="000000"
+                      placeholderTextColor={Colors.textMuted}
+                      value={otpCode}
+                      onChangeText={text => setOtpCode(normalizeOtpCode(text))}
+                      keyboardType="number-pad"
+                      maxLength={8}
+                    />
+
+                    <View style={styles.otpActionsRow}>
+                      <TouchableOpacity
+                        disabled={resendCooldown > 0 || loading}
+                        onPress={() => handleSendResetCode(true)}>
+                        <Text
+                          style={[
+                            styles.linkActionText,
+                            resendCooldown > 0 && styles.linkActionDisabled,
+                          ]}>
+                          {resendCooldown > 0
+                            ? `Reenviar código em ${resendCooldown}s`
+                            : 'Reenviar código'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        disabled={loading}
+                        onPress={() => {
+                          setErrorMessage('');
+                          setSuccessMessage('');
+                          setForgotStep('REQUEST_EMAIL');
+                        }}>
+                        <Text style={styles.secondaryLinkText}>Trocar e-mail</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+
+                {forgotStep === 'NEW_PASSWORD' && (
+                  <>
+                    <Text style={styles.inputLabel}>NOVA SENHA</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Mínimo 6 caracteres"
+                      placeholderTextColor={Colors.textMuted}
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                      secureTextEntry
+                    />
+
+                    <Text style={styles.inputLabel}>CONFIRMAR NOVA SENHA</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Repita a nova senha"
+                      placeholderTextColor={Colors.textMuted}
+                      value={confirmNewPassword}
+                      onChangeText={setConfirmNewPassword}
+                      secureTextEntry
+                    />
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                {mode === 'REGISTER' ? (
+                  <>
+                    <Text style={styles.inputLabel}>NOME COMPLETO</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Ex: Miguel Nunes"
+                      placeholderTextColor={Colors.textMuted}
+                      value={name}
+                      onChangeText={setName}
+                      autoCapitalize="words"
+                    />
+                  </>
+                ) : null}
+
+                <Text style={styles.inputLabel}>E-MAIL</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="seu.email@exemplo.com"
+                  placeholderTextColor={Colors.textMuted}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+
+                <View style={styles.passwordLabelRow}>
+                  <Text style={styles.inputLabel}>SENHA</Text>
+                  {mode === 'LOGIN' && (
+                    <TouchableOpacity onPress={handleOpenForgot} activeOpacity={0.7}>
+                      <Text style={styles.forgotLinkText}>Esqueci minha senha</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <TextInput
                   style={styles.input}
                   placeholder="••••••••"
                   placeholderTextColor={Colors.textMuted}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
+                  value={password}
+                  onChangeText={setPassword}
                   secureTextEntry
                 />
 
-                <Text style={styles.inputLabel}>RENDA MENSAL ESTIMADA (OPCIONAL)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ex: 4500 ou 4.500,00"
-                  placeholderTextColor={Colors.textMuted}
-                  value={monthlyIncomeStr}
-                  onChangeText={setMonthlyIncomeStr}
-                  keyboardType="numeric"
-                />
-                <Text style={styles.incomeHint}>
-                  💡 Baliza seus limites de gastos para evitar que as despesas ultrapassem seus ganhos do mês.
-                </Text>
+                {mode === 'REGISTER' ? (
+                  <>
+                    <Text style={styles.inputLabel}>CONFIRME SUA SENHA</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="••••••••"
+                      placeholderTextColor={Colors.textMuted}
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      secureTextEntry
+                    />
+
+                    <Text style={styles.inputLabel}>RENDA MENSAL ESTIMADA (OPCIONAL)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Ex: 4500 ou 4.500,00"
+                      placeholderTextColor={Colors.textMuted}
+                      value={monthlyIncomeStr}
+                      onChangeText={setMonthlyIncomeStr}
+                      keyboardType="numeric"
+                    />
+                    <Text style={styles.incomeHint}>
+                      💡 Baliza seus limites de gastos e alerta quando suas metas ou despesas ultrapassarem seus ganhos.
+                    </Text>
+                  </>
+                ) : null}
               </>
-            ) : null}
+            )}
 
             <TouchableOpacity
               style={styles.actionButton}
@@ -228,11 +554,18 @@ export default function AuthScreen() {
               {loading ? (
                 <ActivityIndicator color="#000000" />
               ) : (
-                <Text style={styles.actionButtonText}>
-                  {mode === 'LOGIN' ? 'ACESSAR CONTA' : 'CRIAR CONTA SYNCPAY'}
-                </Text>
+                <Text style={styles.actionButtonText}>{renderPrimaryButtonLabel()}</Text>
               )}
             </TouchableOpacity>
+
+            {mode === 'FORGOT' && (
+              <TouchableOpacity
+                style={styles.backToLoginBtn}
+                onPress={handleBackToLogin}
+                disabled={loading}>
+                <Text style={styles.backToLoginText}>← Voltar para o Login</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -311,6 +644,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  stepIndicatorRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 14,
+  },
+  stepPill: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  stepPillActive: {
+    backgroundColor: Colors.primaryMuted,
+    borderColor: Colors.primary,
+  },
+  stepPillText: {
+    color: Colors.textMuted,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  stepPillTextActive: {
+    color: Colors.primary,
+    fontWeight: '800',
+  },
   cardTitle: {
     color: Colors.textPrimary,
     fontSize: 18,
@@ -335,6 +695,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  successBox: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+  },
+  successText: {
+    color: Colors.income,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
+  passwordLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  forgotLinkText: {
+    color: Colors.primary,
+    fontSize: 11,
+    fontWeight: '700',
+  },
   inputLabel: {
     color: Colors.textSecondary,
     fontSize: 10,
@@ -352,6 +738,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  otpInput: {
+    textAlign: 'center',
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: 8,
+    height: 54,
+  },
+  otpActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  linkActionText: {
+    color: Colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  linkActionDisabled: {
+    color: Colors.textMuted,
+  },
+  secondaryLinkText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
   },
   incomeHint: {
     color: Colors.textMuted,
@@ -373,5 +785,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.8,
+  },
+  backToLoginBtn: {
+    marginTop: 14,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  backToLoginText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

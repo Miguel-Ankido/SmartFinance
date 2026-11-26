@@ -8,12 +8,12 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { CategoryData } from '../types/finance';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
+import { evaluateBudgetExtrapolation } from '../utils/profileBudgetUtils';
 
 interface EditBudgetModalProps {
   category: CategoryData | null;
@@ -36,16 +36,23 @@ export default function EditBudgetModal({ category, onClose }: EditBudgetModalPr
 
   const currentLimit = category.budgetLimit;
   const currentSpent = category.spent;
-  const parsedLimit = parseFloat(newLimitStr.replace(',', '.')) || 0;
+  const parsedLimit = Math.max(0, parseFloat(newLimitStr.replace(',', '.')) || 0);
   const remainingWithNewLimit = Math.max(0, parsedLimit - currentSpent);
-  const isOverBudget = parsedLimit > 0 && currentSpent > parsedLimit;
 
   // Cálculo da soma com as outras categorias vs renda do usuário
   const otherCategoriesTotal = categories
     .filter(c => c.id !== category.id)
     .reduce((sum, c) => sum + (c.budgetLimit || 0), 0);
   const newTotalLimit = otherCategoriesTotal + parsedLimit;
-  const exceedsIncome = userIncome > 0 && newTotalLimit > userIncome;
+  const extrapolation = evaluateBudgetExtrapolation(
+    currentSpent,
+    parsedLimit,
+    newTotalLimit,
+    userIncome,
+  );
+
+  const isOverBudget = extrapolation.isSpentExtrapolated;
+  const exceedsIncome = extrapolation.isSingleLimitOverIncome || extrapolation.isTotalBudgetOverIncome;
 
   const handleAddQuick = (increment: number) => {
     const current = parseFloat(newLimitStr.replace(',', '.')) || 0;
@@ -54,13 +61,6 @@ export default function EditBudgetModal({ category, onClose }: EditBudgetModalPr
 
   const handleSave = () => {
     if (parsedLimit < 0) return;
-    if (exceedsIncome) {
-      Alert.alert(
-        'Limite Superior à Renda',
-        `A soma de todos os limites (R$ ${newTotalLimit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) ultrapassará sua renda mensal cadastrada de R$ ${userIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}. Reduza este limite para salvar.`,
-      );
-      return;
-    }
     updateCategoryBudget(category.id, parsedLimit);
     onClose();
   };
@@ -127,12 +127,15 @@ export default function EditBudgetModal({ category, onClose }: EditBudgetModalPr
             </TouchableOpacity>
           </View>
 
-          {/* Alerta de Ultrapassagem da Renda */}
+          {/* Aviso de Extrapolação (não impede salvar) */}
           {exceedsIncome && (
             <View style={styles.incomeWarningCard}>
-              <Text style={styles.incomeWarningTitle}>⚠️ LIMITE EXCEDE RENDA MENSAL</Text>
+              <Text style={styles.incomeWarningTitle}>⚠️ LIMITE EXTRAPOLADO NA META</Text>
               <Text style={styles.incomeWarningText}>
-                Com este valor, o orçamento total será de {newTotalLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}, ultrapassando sua renda mensal de {userIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} em {(newTotalLimit - userIncome).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.
+                {extrapolation.isSingleLimitOverIncome
+                  ? `Este teto individual ultrapassa sua renda mensal (${userIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) em ${extrapolation.singleIncomeExcessAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. `
+                  : `Com este valor, a soma das metas será ${newTotalLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}, ultrapassando sua renda de ${userIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} em ${extrapolation.totalIncomeExcessAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. `}
+                Você pode salvar mesmo assim — um alerta permanecerá visível na meta.
               </Text>
             </View>
           )}
@@ -140,14 +143,23 @@ export default function EditBudgetModal({ category, onClose }: EditBudgetModalPr
           {/* Previsão do Impacto */}
           <View style={[styles.previewCard, isOverBudget && styles.previewCardAlert]}>
             <Text style={styles.previewText}>
-              {isOverBudget
-                ? `Atenção: Os gastos atuais já ultrapassam o novo teto em ${(currentSpent - parsedLimit).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`
-                : `Margem disponível após ajuste: ${remainingWithNewLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`}
+              {parsedLimit === 0
+                ? 'Esta meta ficará sem teto máximo definido.'
+                : isOverBudget
+                  ? `⚠️ Limite extrapolado pelos gastos: as despesas atuais já ultrapassam este teto em ${(currentSpent - parsedLimit).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`
+                  : `Margem disponível após ajuste: ${remainingWithNewLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`}
             </Text>
           </View>
 
-          <TouchableOpacity style={styles.saveBtn} activeOpacity={0.85} onPress={handleSave}>
-            <Text style={styles.saveBtnText}>CONFIRMAR NOVO LIMITE</Text>
+          <TouchableOpacity
+            style={[styles.saveBtn, (exceedsIncome || isOverBudget) && styles.saveBtnExtrapolated]}
+            activeOpacity={0.85}
+            onPress={handleSave}>
+            <Text style={[styles.saveBtnText, (exceedsIncome || isOverBudget) && styles.saveBtnTextExtrapolated]}>
+              {exceedsIncome || isOverBudget
+                ? 'SALVAR COM LIMITE EXTRAPOLADO'
+                : 'CONFIRMAR NOVO LIMITE'}
+            </Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -235,15 +247,15 @@ const styles = StyleSheet.create({
   },
   quickBtnText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700' },
   incomeWarningCard: {
-    backgroundColor: 'rgba(248, 113, 113, 0.12)',
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
     padding: 12,
     borderRadius: 10,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: 'rgba(248, 113, 113, 0.4)',
+    borderColor: 'rgba(245, 158, 11, 0.45)',
   },
   incomeWarningTitle: {
-    color: Colors.expense,
+    color: '#fbbf24',
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.8,
@@ -274,5 +286,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
+  saveBtnExtrapolated: {
+    backgroundColor: '#f59e0b',
+  },
   saveBtnText: { color: '#ffffff', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
+  saveBtnTextExtrapolated: { color: '#000000' },
 });
